@@ -151,7 +151,7 @@ const QuizStudio = forwardRef(function QuizStudio({ video, onAttemptSaved }, ref
         if (history.status === 'fulfilled') setJob(history.value[0] || null)
         if (source.status === 'fulfilled') setTranscript(source.value)
         if (stored.status === 'fulfilled') { setQuiz(stored.value); setVersion(String(stored.value.quiz_version || '')) }
-        else if (['completed', 'completed_no_speech'].includes(video.status)) setError(stored.reason.message)
+        else if (['completed', 'completed_no_speech', 'ready_for_quiz'].includes(video.status)) setError(stored.reason.message)
         if (available.status === 'fulfilled') setVersions(available.value)
       } catch (error) { if (!controller.signal.aborted && alive.current) setError(error.message) }
       finally { if (alive.current) setLoading(false) }

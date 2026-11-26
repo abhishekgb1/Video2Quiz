@@ -31,7 +31,8 @@ function Icon({ name, size = 20 }) {
 
 function formatDate(value) {
   if (!value) return 'Time unavailable'
-  const date = new Date(value)
+  const normalized = typeof value === 'string' && !/(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ? `${value}Z` : value
+  const date = new Date(normalized)
   return Number.isNaN(date.getTime()) ? 'Time unavailable' : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 }
 
@@ -46,6 +47,7 @@ function processingStages(status) {
     transcribing: [2, 2, 1, 0],
     generating_quiz: [2, 2, 2, 1],
     completed: [2, 2, 2, 2],
+    ready_for_quiz: [2, 2, 2, 0],
     completed_no_speech: [2, 2, 2, 3],
   }
   if (status === 'downloading') return [1, 0, 0, 0]
@@ -103,7 +105,7 @@ function App() {
 
   const stats = useMemo(() => ({
     total: videos.length,
-    ready: videos.filter(video => video.status === 'completed').length,
+    ready: videos.filter(video => ['completed', 'ready_for_quiz'].includes(video.status)).length,
     processing: videos.filter(video => ['downloading', 'uploaded', 'extracting_audio', 'transcribing', 'generating_quiz'].includes(video.status)).length,
     failed: videos.filter(video => video.status === 'failed').length,
   }), [videos])
@@ -247,6 +249,7 @@ function App() {
         </div>
       })}
       {video.status === 'failed' && <div className="inline-alert error-alert"><Icon name="alert"/><span>{video.error_message || 'Processing failed. The backend did not provide an error message.'}</span></div>}
+      {video.status === 'ready_for_quiz' && <div className="inline-alert info-alert">Transcript ready. Choose your difficulty counts below, then select Generate Quiz.</div>}
       {video.status === 'completed_no_speech' && <div className="inline-alert info-alert">Processing finished, but the transcript contained no speech for quiz generation.</div>}
     </div>
   }
@@ -348,7 +351,7 @@ function App() {
                 <td><span className="source-label">{video.source_type === 'youtube' ? <Icon name="link" size={14}/> : <Icon name="upload" size={14}/>} {video.source_type}</span></td>
                 <td className="date-cell">{formatDate(video.created_at)}</td>
                 <td><span className={`status-pill ${video.status}`}><i/>{statusLabel(video.status)}</span></td>
-                <td><button className="table-action" onClick={() => openVideo(video)}>{selected?.id === video.id ? 'Selected' : ['completed', 'completed_no_speech'].includes(video.status) ? 'Open quiz' : 'View status'} <Icon name="arrow" size={14}/></button></td>
+                <td><button className="table-action" onClick={() => openVideo(video)}>{selected?.id === video.id ? 'Selected' : ['completed', 'completed_no_speech', 'ready_for_quiz'].includes(video.status) ? 'Open quiz' : 'View status'} <Icon name="arrow" size={14}/></button></td>
               </tr>)}</tbody></table></div>}
         </section>
 

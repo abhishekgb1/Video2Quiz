@@ -165,13 +165,14 @@ def run_generation(job_id):
             if any(actual[level] != count for level, count in counts.items()) or len(items) != sum(counts.values()):
                 raise InsufficientContent("The requested difficulty distribution could not be met. Your previous quiz is preserved.")
             # Lock allocation and save the entire validated distribution atomically.
-            db.query(Video).filter_by(id=job.video_id).with_for_update().one()
+            video = db.query(Video).filter_by(id=job.video_id).with_for_update().one()
             from sqlalchemy import func
             version = (db.query(func.max(Question.quiz_version)).filter_by(video_id=job.video_id).scalar() or 0) + 1
             for item in items:
                 options = item.pop("options")
                 db.add(Question(video_id=job.video_id, quiz_version=version, options_json=json.dumps(options),
                                 generation_method=method, **item))
+            video.status, video.error_message = "completed", None
             job.status, job.progress, job.quiz_version = "completed", 100, version
             job.generation_method, job.message = method, notice or "Quiz generated and saved."
             db.commit()

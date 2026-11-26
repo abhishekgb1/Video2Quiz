@@ -1,6 +1,6 @@
 # Development checkpoint
 
-Saved on 26 November 2026 at the user's request. This is a development checkpoint, not a completed production release.
+Updated on 26 November 2026. The free demo is deployed; advanced AI and multi-user security remain unfinished.
 
 ## Implemented
 
@@ -16,7 +16,7 @@ Saved on 26 November 2026 at the user's request. This is a development checkpoin
 
 ## Executed verification
 
-- Before this checkpoint, 60 automated backend tests passed, including existing benchmark tests. Final checkpoint test output is reported in the accompanying chat.
+- The checkpoint passed 60 automated tests; the resumed work adds a regression check that processing waits for user configuration. Final test output is reported in the accompanying chat.
 - Frontend production build passed.
 - Browser: four Easy questions generated from the real saved transcript and persisted as a new version; prior version remained accessible.
 - Browser: practice feedback, submission, saved results, and difficulty filtering exercised.
@@ -29,13 +29,13 @@ Saved on 26 November 2026 at the user's request. This is a development checkpoin
 - No Ollama model is configured. Live Medium/Hard generation and a real AI-generated 36-question quiz have not been verified. Exact 12/12/12 database distribution is covered by a provider-fixture test, not a live model test. Without AI, requests requiring Medium/Hard fail explicitly instead of relabeling baseline questions.
 - The fallback is a simple extractive Easy generator and can produce cloze questions; question quality and transcript transcription errors need review before formal assessment.
 - No OCR or visual-context analysis is implemented; questions currently use transcript evidence only.
-- The private Neon media bucket accepts uploads, but the issued write-scoped credential returned AccessDenied for reads/listing and signed retrieval. Cloud playback is not verified. Configure a credential with explicit storage read and write scopes and repeat persistence tests before relying on cloud media. Do not upload private content until access behavior is verified.
+- Private Neon storage is now verified with explicit read/write scopes: writes, fresh-client signed retrieval, partial byte reads, and denial of anonymous access. Credentials stay outside Git. The earlier write-only credential did not grant read access in the live service.
 - Existing local videos were not migrated to cloud storage. Render Free local files are ephemeral.
-- In-app browser media playback was unavailable; the saved video was verified in desktop Edge. YouTube embedded playback, full-screen behavior, mobile/tablet layouts, and cloud video playback still need complete browser checks.
-- Backend exam API restrictions are tested. Final browser timer/auto-submit testing is not complete.
+- Cloud video metadata and timestamp seeking were exercised in the production browser. Mobile 390px question navigation and theme layouts were checked without horizontal overflow. YouTube embedded playback and full-screen mode still need dedicated checks.
+- Production-browser timed examination passed: answers stayed hidden, the one-minute timer auto-submitted, grading/difficulty analysis were correct, and the result persisted across refresh.
 - Authentication and user-level data isolation are not implemented. Treat this as a single-user development/demo app, not a private multi-user examination service.
 - GitHub Actions configuration is included; its remote execution must be checked after pushing.
-- Render and Vercel deployment are not completed. No paid hosting services were enabled. Vercel authorization/project selection remains to be completed.
+- Vercel and Render are deployed on free resources. The backend database-readiness endpoint passed. Vercel CLI deployments work, but GitHub auto-deploy linking is blocked until the owner adds a GitHub Login Connection in their Vercel account. No paid services were enabled.
 
 ## Local commands
 
@@ -64,3 +64,16 @@ npm run build
 ```
 
 Stop local servers with Ctrl+C in their terminals. Local secrets, database backups, uploaded media, virtual environments, generated builds and logs are ignored by Git.
+
+
+## Live demo
+
+- Frontend: https://video2quiz.vercel.app
+- Backend: https://video2quiz.onrender.com
+- API documentation: https://video2quiz.onrender.com/docs
+- Database readiness: https://video2quiz.onrender.com/health/ready
+- Public source repository: https://github.com/abhishekgb1/Video2Quiz
+
+A newly generated educational clip was actually transcribed locally with Whisper, uploaded to private Neon media storage, and used to generate four Easy questions. Server grading matched independently calculated database answers; the saved result was retrieved successfully. Production browser tests used this shared database and cloud media. Production-side video processing is checked separately; reading an already-processed clip does not prove cloud transcription works.
+
+Video processing now stops at `ready_for_quiz` after transcription, allowing configuration before generation. Silent videos retain `completed_no_speech`. Successful generation marks the video completed, and regeneration preserves earlier versions.

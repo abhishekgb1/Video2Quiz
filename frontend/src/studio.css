@@ -1,5 +1,9 @@
 :root{--easy:#72dfbe;--medium:#f5c76b;--hard:#ff899b;--surface-inset:rgba(5,9,23,.3);--surface-accent:rgba(139,113,255,.09)}
 :root[data-theme="light"]{--easy:#18745a;--medium:#8b5b00;--hard:#b52a48;--surface-inset:#f5f7fc;--surface-accent:#f1edfc}
+:root[data-theme="light"] .hero{background:linear-gradient(115deg,#f0eafb,#e7efff);border-color:var(--line)}
+:root[data-theme="light"] .hero h1{color:var(--white)}
+:root[data-theme="light"] .hero-copy>p{color:var(--muted)}
+:root[data-theme="light"] .hero-glow{opacity:.12}
 body,.sidebar,.panel,.button,input,select,.question-card{transition:background-color .2s,color .2s,border-color .2s}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 .header-actions{display:flex;gap:10px;align-items:center}.theme-toggle{color:var(--purple)}

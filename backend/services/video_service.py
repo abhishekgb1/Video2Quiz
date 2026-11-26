@@ -2,8 +2,7 @@ import json, logging
 from pathlib import Path
 from sqlalchemy.orm import Session
 from backend.database.database import SessionLocal
-from backend.models.video import Transcript, Video, QuizGeneration
-from backend.services.quiz_service import persist_questions
+from backend.models.video import Transcript, Video
 from backend.services.transcription_service import extract_audio, transcribe_audio
 logger = logging.getLogger(__name__)
 
@@ -36,22 +35,10 @@ def process_video(video_id: int):
         transcript.language = data.get("language")
         transcript.segments_json = json.dumps(data.get("segments", []), ensure_ascii=False)
         db.commit()
-        video.status = "generating_quiz"
-        db.commit()
-        from backend.schemas.video import QuizConfiguration
-        from backend.services.structured_quiz import run_generation
-        configuration = QuizConfiguration()
-        count = 0
-        if data["text"]:
-            job = QuizGeneration(video_id=video_id, total_questions=configuration.total_questions, **configuration.model_dump())
-            db.add(job)
-            db.commit()
-            run_generation(job.id)
-            db.refresh(job)
-            count = configuration.total_questions if job.status == "completed" else 0
-        video.status = "completed" if data["text"] else "completed_no_speech"
-        if not count and data["text"]:
-            video.error_message = job.message
+        # Configuration is chosen after transcription; never launch an
+        # unsolicited default quiz before the user selects their distribution.
+        video.status = "ready_for_quiz" if data["text"].strip() else "completed_no_speech"
+        video.error_message = None
         db.commit()
     except Exception as exc:
         logger.exception("Video processing failed for video_id=%s", video_id)

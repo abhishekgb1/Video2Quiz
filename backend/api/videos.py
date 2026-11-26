@@ -220,7 +220,7 @@ def get_quiz(video_id: int, db: Session = Depends(get_db), version: int | None =
         from backend.api.quiz_tools import serialize_job
         job = db.query(QuizGeneration).filter_by(video_id=video_id, quiz_version=quiz_version, status="completed").first()
         configuration = serialize_job(job) if job else None
-    if not questions and video.status not in {"completed", "completed_no_speech"}:
+    if not questions and video.status not in {"completed", "completed_no_speech", "ready_for_quiz"}:
         raise HTTPException(status_code=409, detail=f"Quiz not available yet. Current status: {video.status}")
     return {"video_id": video_id, "status": video.status, "quiz_version": quiz_version,
             "configuration": configuration,

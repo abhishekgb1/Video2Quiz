@@ -1,6 +1,6 @@
 # Video2Quiz
 
-Current development checkpoint: React/Vite quiz dashboard, configurable generation, timed exams, practice feedback, source playback and versioned database storage. See [implementation status](docs/implementation-status.md) for tested behavior and unfinished work. Cloud deployment is not complete.
+Current development checkpoint: React/Vite quiz dashboard, configurable generation, timed exams, practice feedback, source playback and versioned database storage. See [implementation status](docs/implementation-status.md) for tested behavior and unfinished work. Free demo: https://video2quiz.vercel.app (backend: https://video2quiz.onrender.com). Advanced AI generation needs a configured model; see the status document for limitations.
 
 
 

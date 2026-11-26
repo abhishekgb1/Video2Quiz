@@ -112,6 +112,24 @@ def test_generation_rejects_missing_transcript_and_invalid_counts(client):
     assert client.post(f"/api/videos/{video_id}/generate", json={"easy_count": 0, "medium_count": 0, "hard_count": 0, "question_generation_mode": "custom"}).status_code == 422
 
 
+def test_processing_waits_for_user_configuration_before_generating(client, monkeypatch, tmp_path):
+    from backend.services import video_service, media_service, object_storage
+    source = source_data()
+    monkeypatch.setattr(video_service, "extract_audio", lambda *_: tmp_path / "audio.wav")
+    monkeypatch.setattr(video_service, "transcribe_audio", lambda *_: {**source, "language": "en"})
+    monkeypatch.setattr(media_service, "prepare_browser_video", lambda *_: tmp_path / "playback.mp4")
+    monkeypatch.setattr(object_storage, "enabled", lambda: False)
+    response = client.post("/api/videos/upload", files={"file": ("lesson.mp4", b"test source", "video/mp4")})
+    identifier = response.json()["id"]
+    video_service.process_video(identifier)
+    with database.SessionLocal() as db:
+        assert db.get(Video, identifier).status == "ready_for_quiz"
+        assert db.query(Transcript).filter_by(video_id=identifier).one().text == source["text"]
+        assert db.query(Question).filter_by(video_id=identifier).count() == 0
+        assert db.query(QuizGeneration).filter_by(video_id=identifier).count() == 0
+    assert client.get(f"/api/videos/{identifier}/quiz").json()["questions"] == []
+
+
 def test_practice_explanations_are_forbidden_during_timed_exam(client):
     video_id, ids = create_processed_video()
     exam = client.post(f"/api/videos/{video_id}/attempts", json={"idempotency_key": "timed-enhanced", "mode": "exam", "time_limit_seconds": 60}).json()
