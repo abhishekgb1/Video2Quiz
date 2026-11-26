@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: video2quiz
+    runtime: docker
+    region: singapore
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # Set the free Neon DATABASE_URL in Render; never commit credentials.
+      - key: VIDEO2QUIZ_DATA_DIR
+        value: /tmp/video2quiz
+      - key: WHISPER_MODEL
+        value: tiny
+      - key: MAX_QUIZ_QUESTIONS
+        value: "60"
+      - key: MAX_GENERATION_JOBS
+        value: "1"
+      - key: MAX_UPLOAD_MB
+        value: "100"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: MEDIA_BUCKET
+        sync: false
+      - key: AWS_ENDPOINT_URL_S3
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
