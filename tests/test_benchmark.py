@@ -197,3 +197,4 @@ def test_existing_csv_without_transcript_measurement_loads_as_unavailable(tmp_pa
     loaded = read_experiment_csv(csv_path)
     assert len(loaded) == 1
     assert loaded[0].transcript_word_count is None
+

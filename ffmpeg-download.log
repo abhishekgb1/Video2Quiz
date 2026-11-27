@@ -1,0 +1,8 @@
+Collecting imageio-ffmpeg
+  Downloading imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl.metadata (1.5 kB)
+Downloading imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl (38.9 MB)
+Saved c:\users\abhi reddy\appdata\local\temp\video2quiz-wheels\imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl
+Successfully downloaded imageio-ffmpeg
+
+[notice] A new release of pip is available: 24.0 -> 26.3
+[notice] To update, run: C:\Users\abhi reddy\OneDrive\文档\ChatGPT\Video2Quiz\.venv\Scripts\python.exe -m pip install --upgrade pip

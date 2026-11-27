@@ -86,7 +86,7 @@ def create_processed_video(question_versions=None):
 
 
 def test_health_and_docs(client):
-    assert client.get("/health").json()["status"] == "healthy"
+    assert client.get("/").json()["status"] == "healthy"
     assert client.get("/docs").status_code == 200
 
 
@@ -94,17 +94,8 @@ def test_upload_rejects_unsupported_extension(client):
     response = client.post(
         "/api/videos/upload",
         files={"file": ("notes.txt", b"not a video", "text/plain")},
-        data={"rights_confirmed": "true"},
     )
     assert response.status_code == 400
-
-
-def test_youtube_download_workflow_is_disabled(client):
-    assert client.post("/api/videos/6/retry").status_code == 410
-    response = client.post("/api/videos/youtube", json={"url": "https://youtu.be/_t3pBsFMBVU"})
-    assert response.status_code == 200
-    assert "authorized transcript" in response.json()["message"]
-    assert client.get("/api/videos?source_type=youtube").json() == []
 
 
 def test_youtube_rejects_non_youtube_host(client):
@@ -116,7 +107,6 @@ def test_upload_persists_video_and_creates_file(client, tmp_path):
     response = client.post(
         "/api/videos/upload",
         files={"file": ("lesson.mp4", b"test video bytes", "video/mp4")},
-        data={"rights_confirmed": "true"},
     )
     assert response.status_code == 202
     video = response.json()
@@ -433,3 +423,4 @@ def test_attempt_history_returns_404_for_unknown_video(client):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Video not found."
+

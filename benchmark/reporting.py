@@ -375,3 +375,4 @@ def write_graphs(results: Iterable[ExperimentResult], output_dir: Path, run_name
     """Compatibility wrapper returning the four redesigned PNG files."""
     outputs, _, _ = write_paper_reports(results, output_dir, run_name)
     return [path for path in outputs if path.suffix.lower() == ".png"]
+

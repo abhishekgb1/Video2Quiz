@@ -1,0 +1,28 @@
+Collecting boto3
+  Downloading boto3-1.44.12-py3-none-any.whl.metadata (6.6 kB)
+Collecting botocore<1.45.0,>=1.44.12 (from boto3)
+  Downloading botocore-1.44.12-py3-none-any.whl.metadata (5.6 kB)
+Collecting jmespath<2.0.0,>=0.7.1 (from boto3)
+  Downloading jmespath-1.1.0-py3-none-any.whl.metadata (7.6 kB)
+Collecting s3transfer<0.20.0,>=0.19.0 (from boto3)
+  Downloading s3transfer-0.19.3-py3-none-any.whl.metadata (1.7 kB)
+Collecting python-dateutil<3.0.0,>=2.1 (from botocore<1.45.0,>=1.44.12->boto3)
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Requirement already satisfied: urllib3!=2.2.0,<3,>=1.25.4 in c:\users\abhi reddy\onedrive\文档\chatgpt\video2quiz\.venv\lib\site-packages (from botocore<1.45.0,>=1.44.12->boto3) (2.8.0)
+Collecting six>=1.5 (from python-dateutil<3.0.0,>=2.1->botocore<1.45.0,>=1.44.12->boto3)
+  Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Downloading boto3-1.44.12-py3-none-any.whl (140 kB)
+Downloading botocore-1.44.12-py3-none-any.whl (16.9 MB)
+Downloading jmespath-1.1.0-py3-none-any.whl (20 kB)
+Downloading s3transfer-0.19.3-py3-none-any.whl (90 kB)
+Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Installing collected packages: six, jmespath, python-dateutil, botocore, s3transfer, boto3
+  Attempting uninstall: python-dateutil
+    Found existing installation: python-dateutil 4.0.0
+    Uninstalling python-dateutil-4.0.0:
+      Successfully uninstalled python-dateutil-4.0.0
+Successfully installed boto3-1.44.12 botocore-1.44.12 jmespath-1.1.0 python-dateutil-2.9.0.post0 s3transfer-0.19.3 six-1.17.0
+
+[notice] A new release of pip is available: 24.0 -> 26.3
+[notice] To update, run: C:\Users\abhi reddy\OneDrive\文档\ChatGPT\Video2Quiz\.venv\Scripts\python.exe -m pip install --upgrade pip

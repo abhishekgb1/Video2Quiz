@@ -95,3 +95,4 @@ def summarize(results: Iterable[ExperimentResult]) -> list[dict[str, object]]:
             }
         )
     return summary
+

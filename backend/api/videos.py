@@ -1,10 +1,11 @@
-import json, logging, os
-from datetime import datetime, timedelta
+import json, logging, os, shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
+import yt_dlp
 from dotenv import load_dotenv
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Path as ApiPath, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Path as ApiPath, Response, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
@@ -67,21 +68,14 @@ def _require_attempt_schema(db: Session):
         )
 
 def validate_youtube_url(url: str):
-    import re
-    parsed = urlparse(url.strip())
+    parsed = urlparse(url)
     host = (parsed.hostname or "").lower()
-    if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password or host not in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}:
-        raise HTTPException(status_code=400, detail="Please provide a valid YouTube watch, Shorts or youtu.be URL.")
-    parts = parsed.path.strip("/").split("/")
-    video_id = parts[0] if host.endswith("youtu.be") else (parse_qs(parsed.query).get("v", [""])[0] if parsed.path == "/watch" else (parts[1] if len(parts) == 2 and parts[0] in {"shorts", "embed"} else ""))
-    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
-        raise HTTPException(status_code=400, detail="The YouTube URL must identify a video with a valid 11-character ID.")
-    return "https://www.youtube.com/watch?v=" + video_id
+    if parsed.scheme not in {"http", "https"} or host not in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}:
+        raise HTTPException(status_code=400, detail="Please provide a valid YouTube URL.")
+    return url
 
 @router.post("/upload", response_model=VideoOut, status_code=status.HTTP_202_ACCEPTED)
-async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...), rights_confirmed: bool = Form(False), db: Session = Depends(get_db)):
-    if not rights_confirmed:
-        raise HTTPException(400, "Confirm that you own this content or have permission to process it.")
+async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...), db: Session = Depends(get_db)):
     extension = Path(file.filename or "").suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
@@ -112,52 +106,84 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
     background_tasks.add_task(process_video, video.id)
     return video
 
-YOUTUBE_GUIDANCE = "Direct downloading of YouTube videos is not supported. Open the video on YouTube and provide an authorized transcript to generate your quiz."
-
-@router.post("/youtube")
-def submit_youtube(payload: YouTubeRequest):
-    return {"source_url": validate_youtube_url(payload.url), "message": YOUTUBE_GUIDANCE}
-
-@router.post("/{video_id}/retry")
-def retry_youtube(video_id: int):
-    raise HTTPException(410, YOUTUBE_GUIDANCE)
-
-@router.post("/youtube/transcript", response_model=VideoOut, status_code=201)
-async def youtube_transcript(url: str = Form(...), text: str = Form(""), rights_confirmed: bool = Form(False), file: UploadFile | None = File(None), db: Session = Depends(get_db)):
-    from backend.services.transcript_import import parse_transcript
-    if not rights_confirmed:
-        raise HTTPException(400, "Confirm that you own this content or have permission to process it.")
-    source_url = validate_youtube_url(url)
-    if file and text.strip():
-        raise HTTPException(400, "Provide either a transcript file or pasted text, not both.")
-    extension = ".txt"
-    if file:
-        extension = Path(file.filename or "").suffix.lower()
-        if extension not in {".txt", ".srt", ".vtt"}:
-            raise HTTPException(400, "Choose a TXT, SRT or VTT transcript.")
-        raw = await file.read(1000001)
-        await file.close()
-        if len(raw) > 1000000:
-            raise HTTPException(413, "Transcript files must be under 1 MB.")
-        try:
-            text = raw.decode("utf-8-sig")
-        except UnicodeDecodeError:
-            raise HTTPException(400, "Save the transcript as UTF-8 text.")
-    try:
-        content, segments = parse_transcript(text, extension)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    video = Video(source_type="youtube", original_filename="YouTube transcript quiz", stored_filename="authorized-transcript", file_path="", source_url=source_url, status="ready_for_quiz")
-    db.add(video); db.flush()
-    db.add(Transcript(video_id=video.id, text=content, segments_json=json.dumps(segments), language=None))
-    db.commit(); db.refresh(video)
+@router.post("/youtube", response_model=VideoOut, status_code=status.HTTP_202_ACCEPTED)
+def submit_youtube(payload: YouTubeRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    url = validate_youtube_url(payload.url.strip())
+    video = Video(source_type="youtube", original_filename="YouTube video", stored_filename="pending",
+                  file_path="", source_url=url, status="downloading")
+    db.add(video); db.commit(); db.refresh(video)
+    background_tasks.add_task(download_and_process_youtube, video.id, url)
     return video
 
+def download_and_process_youtube(video_id: int, url: str):
+    from backend.database.database import SessionLocal
+    db = SessionLocal()
+    try:
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            return
+        template = str(VIDEO_DIR / f"youtube_{video_id}.%(ext)s")
+        options = {"format": "best[ext=mp4]/best",
+                   "outtmpl": template, "merge_output_format": "mp4", "noplaylist": True,
+                   "quiet": True, "no_warnings": True, "socket_timeout": 30,
+                   "retries": 3, "extractor_retries": 3, "fragment_retries": 3}
+        # yt-dlp needs an external JS runtime to solve YouTube's player
+        # challenges. Prefer Node when installed; yt-dlp validates its version.
+        if shutil.which("node"):
+            options["js_runtimes"] = {"node": {}}
+        # Optional: use an existing browser session for videos YouTube gates
+        # behind sign-in. Configure only the browser name (chrome/edge/firefox).
+        browser = os.getenv("YOUTUBE_COOKIES_FROM_BROWSER", "").strip()
+        if browser:
+            options["cookiesfrombrowser"] = (browser,)
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=True)
+        path = VIDEO_DIR / f"youtube_{video_id}.mp4"
+        if not path.exists():
+            matches = list(VIDEO_DIR.glob(f"youtube_{video_id}.*"))
+            if not matches:
+                raise RuntimeError("yt-dlp finished without creating a video file.")
+            path = matches[0]
+        video = db.query(Video).filter(Video.id == video_id).first()
+        video.file_path, video.stored_filename = str(path.resolve()), path.name
+        video.duration_seconds = int(info.get("duration") or 0) or None
+        video.status = "uploaded"
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("YouTube download failed for video %s", video_id)
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if video:
+            message = str(exc).lower()
+            if "winerror 10013" in message or "forbidden by its access permissions" in message:
+                detail = ("This computer or network blocked the connection to YouTube. Try another network, "
+                          "check firewall/VPN settings, or upload the video file directly.")
+            elif "video is not available" in message or "private video" in message:
+                detail = ("yt-dlp could not access this video. Confirm it is public and playable without signing in, "
+                          "then update yt-dlp. If YouTube requires sign-in, configure YOUTUBE_COOKIES_FROM_BROWSER "
+                          "in .env (chrome, edge, or firefox) and restart the backend.")
+            elif "sign in" in message or "confirm you're not a bot" in message:
+                detail = ("YouTube requires a signed-in session for this video. Set "
+                          "YOUTUBE_COOKIES_FROM_BROWSER=chrome (or edge/firefox) in .env and restart the backend, "
+                          "or upload the video file directly.")
+            elif "javascript runtime" in message or "challenge solver" in message or "yt-dlp-ejs" in message:
+                detail = ("YouTube download support is missing its JavaScript challenge solver. Install the backend "
+                          "requirements with `python -m pip install -r requirements.txt`, then restart the backend.")
+            elif "timed out" in message or "connection" in message or "urlopen error" in message:
+                detail = "Could not connect reliably to YouTube. Check your internet, firewall, or VPN and retry."
+            else:
+                detail = ("yt-dlp could not download this video. Update yt-dlp and retry; if it still fails, "
+                          "upload the video file directly. See backend logs for technical details.")
+            video.status, video.error_message = "failed", detail
+            db.commit()
+        return
+    finally:
+        db.close()
+    process_video(video_id)
+
 @router.get("", response_model=list[VideoOut])
-def list_videos(source_type: str = "upload", db: Session = Depends(get_db)):
-    if source_type not in {"upload", "youtube"}:
-        raise HTTPException(400, "Choose upload or youtube as the source type.")
-    return db.query(Video).filter(Video.source_type == source_type).order_by(Video.created_at.desc()).limit(100).all()
+def list_videos(db: Session = Depends(get_db)):
+    return db.query(Video).order_by(Video.created_at.desc()).limit(100).all()
 
 @router.get("/{video_id}", response_model=VideoOut)
 def get_video(video_id: int, db: Session = Depends(get_db)):
@@ -173,40 +199,22 @@ def get_transcript(video_id: int, db: Session = Depends(get_db)):
         video = db.query(Video).filter(Video.id == video_id).first()
         if not video:
             raise HTTPException(status_code=404, detail="Video not found.")
-        if video.source_type == "youtube":
-            raise HTTPException(409, YOUTUBE_GUIDANCE)
         raise HTTPException(status_code=409, detail=f"Transcript not available yet. Current status: {video.status}")
     return {"video_id": video_id, "text": transcript.text, "language": transcript.language,
             "segments": json.loads(transcript.segments_json or "[]")}
 
 @router.get("/{video_id}/quiz")
-def get_quiz(video_id: int, db: Session = Depends(get_db), version: int | None = None):
+def get_quiz(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found.")
     quiz_version, questions = _quiz_questions(db, video_id)
-    if version is not None and question_versioning_available(db):
-        quiz_version = version
-        questions = db.query(Question).filter_by(video_id=video_id, quiz_version=version).order_by(Question.id).all()
-        if not questions:
-            raise HTTPException(404, "Quiz version not found.")
-    configuration = None
-    if "quiz_generations" in inspect(db.get_bind()).get_table_names():
-        from backend.models.video import QuizGeneration
-        from backend.api.quiz_tools import serialize_job
-        job = db.query(QuizGeneration).filter_by(video_id=video_id, quiz_version=quiz_version, status="completed").first()
-        configuration = serialize_job(job) if job else None
-    if not questions and video.status not in {"completed", "completed_no_speech", "ready_for_quiz"}:
-        if video.source_type == "youtube":
-            raise HTTPException(409, YOUTUBE_GUIDANCE)
+    if not questions and video.status not in {"completed", "completed_no_speech"}:
         raise HTTPException(status_code=409, detail=f"Quiz not available yet. Current status: {video.status}")
     return {"video_id": video_id, "status": video.status, "quiz_version": quiz_version,
-            "configuration": configuration,
-            "generation_method": getattr(questions[0], "generation_method", "baseline") if questions else None,
-            "difficulty_counts": {level: sum(q.difficulty == level for q in questions) for level in ("easy", "medium", "hard")},
             "questions": [{"id": q.id, "video_id": q.video_id, "question": q.question_text,
                            "options": json.loads(q.options_json), "difficulty": q.difficulty,
-                           "timestamp_seconds": q.timestamp_seconds, "source_timestamp": q.timestamp_seconds} for q in questions],
+                           "timestamp_seconds": q.timestamp_seconds} for q in questions],
             "notice": "Questions are generated from the video transcript. Submit your answers to see your score and feedback."}
 
 @router.post("/{video_id}/evaluate")
@@ -273,9 +281,6 @@ def _serialize_attempt_start(attempt: ExamAttempt, questions: list[Question]):
             }
             for question in questions
         ],
-        "mode": attempt.mode,
-        "time_limit_seconds": attempt.time_limit_seconds,
-        "expires_at": attempt.started_at + timedelta(seconds=attempt.time_limit_seconds) if attempt.time_limit_seconds else None,
         "notice": "Submit your answers to see your score and feedback.",
     }
 
@@ -291,9 +296,6 @@ def _serialize_attempt_result(attempt: ExamAttempt, responses: list[ExamResponse
             "correct_answer": answer.correct_answer,
             "correct": answer.is_correct,
             "explanation": answer.explanation,
-            "difficulty": answer.difficulty,
-            "timestamp_seconds": answer.timestamp_seconds,
-            "evidence": answer.evidence,
             "feedback": (
                 "Correct — nice work." if answer.is_correct
                 else f"Not quite. The correct answer is {answer.correct_answer}."
@@ -310,17 +312,6 @@ def _serialize_attempt_result(attempt: ExamAttempt, responses: list[ExamResponse
         "percentage": attempt.percentage,
         "feedback": attempt.feedback,
         "results": results,
-        "incorrect": sum(not row.is_correct and row.selected_answer is not None for row in responses),
-        "unanswered": sum(row.selected_answer is None for row in responses),
-        "time_taken_seconds": max(0, int((attempt.submitted_at - attempt.started_at).total_seconds())),
-        "difficulty_performance": {
-            level: {
-                "total": sum(row.difficulty == level for row in responses),
-                "correct": sum(row.difficulty == level and row.is_correct for row in responses),
-                "incorrect": sum(row.difficulty == level and not row.is_correct and row.selected_answer is not None for row in responses),
-                "unanswered": sum(row.difficulty == level and row.selected_answer is None for row in responses),
-            } for level in ("easy", "medium", "hard")
-        },
     }
 
 
@@ -353,7 +344,7 @@ def start_exam_attempt(
             response.status_code = status.HTTP_200_OK
             return _serialize_attempt_start(existing, questions)
 
-        quiz_version = payload.quiz_version or latest_quiz_version(db, video_id)
+        quiz_version = latest_quiz_version(db, video_id)
         questions = db.query(Question).filter(
             Question.video_id == video_id,
             Question.quiz_version == quiz_version,
@@ -373,8 +364,6 @@ def start_exam_attempt(
             total_questions=len(questions),
             idempotency_key=payload.idempotency_key,
             started_at=datetime.utcnow(),
-            mode=payload.mode,
-            time_limit_seconds=(payload.time_limit_seconds or max(60, len(questions) * 60)) if payload.mode == "exam" else None,
         )
         db.add(attempt)
         db.flush()
@@ -435,14 +424,6 @@ def submit_exam_attempt(
             )
 
         now = datetime.utcnow()
-        if attempt.time_limit_seconds and now > attempt.started_at + timedelta(seconds=attempt.time_limit_seconds + 10):
-            # Late submissions cannot replace answers after the server deadline.
-            # Previously saved practice/exam results remain idempotent above.
-            payload = ExamAttemptSubmission(answers={})
-        for question in questions:
-            selected = payload.answers.get(question.id)
-            if selected is not None and selected.strip().casefold() not in {option.strip().casefold() for option in json.loads(question.options_json)}:
-                raise HTTPException(400, "One or more answers are not among the question options.")
         score = 0
         response_rows = []
         for question in questions:
@@ -462,9 +443,6 @@ def submit_exam_attempt(
                 options_json=question.options_json,
                 correct_answer=question.correct_answer,
                 explanation=question.explanation,
-                difficulty=question.difficulty,
-                timestamp_seconds=question.timestamp_seconds,
-                evidence=question.evidence,
             ))
 
         total = len(questions)

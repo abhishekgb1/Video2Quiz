@@ -1,29 +1,6 @@
 from datetime import datetime
 from typing import Any
-from typing import Literal
-import os
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
-
-class QuizConfiguration(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    easy_count: int = Field(default=12, ge=0, strict=True)
-    medium_count: int = Field(default=12, ge=0, strict=True)
-    hard_count: int = Field(default=12, ge=0, strict=True)
-    question_generation_mode: Literal["default", "custom"] = "default"
-
-    @property
-    def total_questions(self):
-        return self.easy_count + self.medium_count + self.hard_count
-
-    @model_validator(mode="after")
-    def validate_distribution(self):
-        maximum = int(os.getenv("MAX_QUIZ_QUESTIONS", "60"))
-        if not 1 <= self.total_questions <= maximum:
-            raise ValueError(f"Select between 1 and {maximum} questions overall.")
-        if self.question_generation_mode == "default" and (self.easy_count, self.medium_count, self.hard_count) != (12, 12, 12):
-            raise ValueError("Default Quiz requires 12 Easy, 12 Medium and 12 Hard questions.")
-        return self
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class YouTubeRequest(BaseModel):
     url: str
@@ -53,9 +30,6 @@ class ExamSubmission(BaseModel):
 
 class ExamAttemptStartRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128)
-    mode: Literal["practice", "exam"] = "exam"
-    time_limit_seconds: int | None = Field(default=None, ge=60, le=14400)
-    quiz_version: int | None = Field(default=None, ge=1)
 
     @field_validator("idempotency_key")
     @classmethod
@@ -97,9 +71,6 @@ class ExamAttemptStartResponse(BaseModel):
     started_at: datetime
     questions: list[ExamStartQuestion]
     notice: str
-    mode: str = "exam"
-    time_limit_seconds: int | None = None
-    expires_at: datetime | None = None
 
 
 class ExamAttemptResultQuestion(BaseModel):
@@ -111,9 +82,6 @@ class ExamAttemptResultQuestion(BaseModel):
     correct: bool
     explanation: str
     feedback: str
-    difficulty: str | None = None
-    timestamp_seconds: int | None = None
-    evidence: str | None = None
 
 
 class ExamAttemptResultResponse(BaseModel):
@@ -127,10 +95,6 @@ class ExamAttemptResultResponse(BaseModel):
     percentage: int
     feedback: str
     results: list[ExamAttemptResultQuestion]
-    incorrect: int = 0
-    unanswered: int = 0
-    time_taken_seconds: int = 0
-    difficulty_performance: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExamAttemptHistoryItem(BaseModel):

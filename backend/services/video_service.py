@@ -3,6 +3,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from backend.database.database import SessionLocal
 from backend.models.video import Transcript, Video
+from backend.services.quiz_service import persist_questions
 from backend.services.transcription_service import extract_audio, transcribe_audio
 logger = logging.getLogger(__name__)
 
@@ -10,20 +11,11 @@ def process_video(video_id: int):
     db: Session = SessionLocal()
     try:
         video = db.query(Video).filter(Video.id == video_id).first()
-        if not video or video.source_type != "upload":
+        if not video:
             return
-        from backend.services import object_storage
-        if object_storage.enabled() and not video.original_object_key:
-            video.original_object_key = object_storage.upload(Path(video.file_path), video_id, "original")
-            db.commit()
         video.status, video.error_message = "extracting_audio", None
         db.commit()
         audio_path = extract_audio(Path(video.file_path), video_id)
-        from backend.services.media_service import prepare_browser_video
-        rendition = prepare_browser_video(Path(video.file_path), video_id)
-        if object_storage.enabled():
-            video.playback_object_key = object_storage.upload(rendition, video_id, "playback")
-            db.commit()
         video.status = "transcribing"
         db.commit()
         data = transcribe_audio(audio_path, video_id)
@@ -35,10 +27,12 @@ def process_video(video_id: int):
         transcript.language = data.get("language")
         transcript.segments_json = json.dumps(data.get("segments", []), ensure_ascii=False)
         db.commit()
-        # Configuration is chosen after transcription; never launch an
-        # unsolicited default quiz before the user selects their distribution.
-        video.status = "ready_for_quiz" if data["text"].strip() else "completed_no_speech"
-        video.error_message = None
+        video.status = "generating_quiz"
+        db.commit()
+        count = persist_questions(db, video_id, data, count=5)
+        video.status = "completed" if data["text"] else "completed_no_speech"
+        if not count and data["text"]:
+            video.error_message = "Transcription completed, but baseline generator could not make questions."
         db.commit()
     except Exception as exc:
         logger.exception("Video processing failed for video_id=%s", video_id)

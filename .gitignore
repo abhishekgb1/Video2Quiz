@@ -28,16 +28,6 @@ benchmark_results*/
 Thumbs.db
 .DS_Store
 
-# Runtime logs
-*.log
-
-# Hosting metadata, generated screenshots, and research documents
 .vercel/
-*.pdf
-*.docx
-*.pptx
-*.mp4
-*.mov
-*.mkv
-*.webm
-*.avi
+frontend/.vercel/
+frontend/.env*
