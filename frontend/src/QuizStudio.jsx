@@ -39,6 +39,16 @@ export const VideoPlayer = forwardRef(function VideoPlayer({ video }, ref) {
   const [speed, setSpeed] = useState('1')
   const [time, setTime] = useState(0), [duration, setDuration] = useState(video.duration_seconds || 0)
   const isYouTube = !saved && video.source_type === 'youtube'
+  let youtubeLink = null
+  if (video.source_type === 'youtube') {
+    try {
+      const url = new URL(video.source_url)
+      if (url.protocol === 'https:' && ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'].includes(url.hostname)) {
+        url.searchParams.set('t', `${Math.floor(time)}s`)
+        youtubeLink = url.href
+      }
+    } catch { /* Invalid source links are not offered for navigation. */ }
+  }
 
   const jump = seconds => {
     const value = Math.max(0, Number(seconds) || 0)
@@ -85,6 +95,7 @@ export const VideoPlayer = forwardRef(function VideoPlayer({ video }, ref) {
   }, [isYouTube, video.id])
 
   return <section className="source-player" ref={box} aria-label="Source video player">
+    {youtubeLink && <div className="studio-actions"><a className="button button-primary" href={youtubeLink} target="_blank" rel="noopener noreferrer" onClick={() => { youtube.current?.pauseVideo?.(); native.current?.pause() }}>Open on YouTube ↗</a><span className="studio-muted">Opens YouTube in a new tab at the current playback time.</span></div>}
     <div className="studio-heading"><div><span className="section-kicker">LEARN FROM THE SOURCE</span><h3>Original educational video</h3></div>{video.source_type === 'youtube' && <button className="button button-outline" onClick={() => { setSaved(value => !value); setError('') }}>{saved ? 'YouTube player' : 'Play saved video'}</button>}</div>
     <div className="video-frame">{isYouTube ? <div className="youtube-holder" ref={holder}/> : <video ref={native} src={`${API}/videos/${video.id}/media`} controls playsInline preload="metadata" aria-label="Original source video" onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => { setDuration(event.currentTarget.duration); if (pendingSeek.current != null) { const value = pendingSeek.current; pendingSeek.current = null; jump(value) } }} onError={() => setError('The saved source video is unavailable or cannot be played by this browser.')}/>}</div>
     <div className="player-toolbar"><span>{clock(time)} / {clock(duration)}</span><button className="button button-outline" onClick={() => jump(time - 10)}>−10 sec</button><button className="button button-outline" onClick={() => jump(time + 10)}>+10 sec</button><label>Speed <select aria-label="Playback speed" value={speed} onChange={event => { const value = event.target.value; setSpeed(value); if (isYouTube) youtube.current?.setPlaybackRate?.(Number(value)); else if (native.current) native.current.playbackRate = Number(value) }}>{[.5, .75, 1, 1.25, 1.5, 2].map(value => <option key={value} value={value}>{value}×</option>)}</select></label></div>
