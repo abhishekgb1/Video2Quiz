@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 
 const API = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 const LEVELS = ['easy', 'medium', 'hard']
-const DEFAULT = { easy_count: 4, medium_count: 4, hard_count: 4 }
+const DEFAULT = { easy_count: 12, medium_count: 12, hard_count: 12 }
 export const clock = value => `${Math.floor(Math.max(0, value || 0) / 60).toString().padStart(2, '0')}:${Math.floor(Math.max(0, value || 0) % 60).toString().padStart(2, '0')}`
 
 async function request(path, options) {
@@ -16,89 +16,38 @@ async function request(path, options) {
 }
 const post = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
-let youtubeApi
-function loadYouTube() {
-  if (window.YT?.Player) return Promise.resolve(window.YT)
-  if (!youtubeApi) youtubeApi = new Promise((resolve, reject) => {
-    const prior = window.onYouTubeIframeAPIReady
-    const timeout = setTimeout(() => { youtubeApi = null; reject(Error('YouTube player could not load. Try the saved video.')) }, 20000)
-    window.onYouTubeIframeAPIReady = () => { clearTimeout(timeout); prior?.(); resolve(window.YT) }
-    const script = document.createElement('script')
-    script.src = 'https://www.youtube.com/iframe_api'
-    script.onerror = () => { clearTimeout(timeout); youtubeApi = null; reject(Error('YouTube is unavailable. Try the saved video.')) }
-    document.head.append(script)
-  })
-  return youtubeApi
-}
-
 export const VideoPlayer = forwardRef(function VideoPlayer({ video }, ref) {
-  const box = useRef(null), native = useRef(null), holder = useRef(null), youtube = useRef(null)
-  const pendingSeek = useRef(null), ready = useRef(false)
-  const [saved, setSaved] = useState(video.source_type !== 'youtube')
-  const [error, setError] = useState('')
-  const [speed, setSpeed] = useState('1')
+  const box = useRef(null), native = useRef(null), pendingSeek = useRef(null)
   const [time, setTime] = useState(0), [duration, setDuration] = useState(video.duration_seconds || 0)
-  const isYouTube = !saved && video.source_type === 'youtube'
-  let youtubeLink = null
-  if (video.source_type === 'youtube') {
+  const [error, setError] = useState(''), [speed, setSpeed] = useState('1')
+  const isYouTube = video.source_type === 'youtube'
+  function youtubeLink(seconds) {
     try {
       const url = new URL(video.source_url)
-      if (url.protocol === 'https:' && ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'].includes(url.hostname)) {
-        url.searchParams.set('t', `${Math.floor(time)}s`)
-        youtubeLink = url.href
-      }
-    } catch { /* Invalid source links are not offered for navigation. */ }
+      if (url.protocol !== 'https:' || !['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'www.youtu.be'].includes(url.hostname)) return null
+      if (seconds != null) url.searchParams.set('t', `${Math.floor(seconds)}s`)
+      return url.href
+    } catch { return null }
   }
-
   const jump = seconds => {
+    if (seconds == null) return
     const value = Math.max(0, Number(seconds) || 0)
-    box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     if (isYouTube) {
-      if (ready.current && youtube.current) { youtube.current.seekTo(value, true); youtube.current.playVideo() }
-      else pendingSeek.current = value
-    } else if (native.current) {
-      if (native.current.readyState) { native.current.currentTime = value; native.current.play().catch(() => setError('Press Play to continue at the selected timestamp.')) }
-      else { pendingSeek.current = value; native.current.load() }
+      const link = youtubeLink(value)
+      if (link) window.open(link, '_blank', 'noopener,noreferrer')
+      return
     }
+    box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (native.current?.readyState) { native.current.currentTime = value; native.current.play().catch(() => setError('Press Play to continue at the selected timestamp.')) }
+    else { pendingSeek.current = value; native.current?.load() }
   }
   useImperativeHandle(ref, () => ({ seek: jump }))
-
-  useEffect(() => {
-    if (!isYouTube) return
-    let cancelled = false
-    let ticker
-    setError('')
-    ready.current = false
-    let id
-    try {
-      const url = new URL(video.source_url)
-      id = url.hostname.includes('youtu.be') ? url.pathname.split('/')[1] : url.searchParams.get('v') || url.pathname.split('/').filter(Boolean).at(-1)
-    } catch { setError('This video has no valid YouTube source. Try the saved video.'); return }
-    loadYouTube().then(YT => {
-      if (cancelled || !holder.current) return
-      const mount = document.createElement('div')
-      holder.current.replaceChildren(mount)
-      youtube.current = new YT.Player(mount, {
-        videoId: id, width: '100%', height: '100%',
-        playerVars: { playsinline: 1, controls: 1, origin: window.location.origin, rel: 0 },
-        events: {
-          onReady: () => {
-            ready.current = true
-            if (pendingSeek.current != null) { const value = pendingSeek.current; pendingSeek.current = null; jump(value) }
-            ticker = setInterval(() => { setTime(youtube.current?.getCurrentTime?.() || 0); setDuration(youtube.current?.getDuration?.() || 0) }, 1000)
-          },
-          onError: event => setError(`YouTube playback is unavailable (${event.data}). Use the saved original video if available.`),
-        },
-      })
-    }).catch(error => { if (!cancelled) setError(error.message) })
-    return () => { cancelled = true; ready.current = false; clearInterval(ticker); youtube.current?.destroy?.(); youtube.current = null }
-  }, [isYouTube, video.id])
-
   return <section className="source-player" ref={box} aria-label="Source video player">
-    {youtubeLink && <div className="studio-actions"><a className="button button-primary" href={youtubeLink} target="_blank" rel="noopener noreferrer" onClick={() => { youtube.current?.pauseVideo?.(); native.current?.pause() }}>Open on YouTube ↗</a><span className="studio-muted">Opens YouTube in a new tab at the current playback time.</span></div>}
-    <div className="studio-heading"><div><span className="section-kicker">LEARN FROM THE SOURCE</span><h3>Original educational video</h3></div>{video.source_type === 'youtube' && <button className="button button-outline" onClick={() => { setSaved(value => !value); setError('') }}>{saved ? 'YouTube player' : 'Play saved video'}</button>}</div>
-    <div className="video-frame">{isYouTube ? <div className="youtube-holder" ref={holder}/> : <video ref={native} src={`${API}/videos/${video.id}/media`} controls playsInline preload="metadata" aria-label="Original source video" onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => { setDuration(event.currentTarget.duration); if (pendingSeek.current != null) { const value = pendingSeek.current; pendingSeek.current = null; jump(value) } }} onError={() => setError('The saved source video is unavailable or cannot be played by this browser.')}/>}</div>
-    <div className="player-toolbar"><span>{clock(time)} / {clock(duration)}</span><button className="button button-outline" onClick={() => jump(time - 10)}>−10 sec</button><button className="button button-outline" onClick={() => jump(time + 10)}>+10 sec</button><label>Speed <select aria-label="Playback speed" value={speed} onChange={event => { const value = event.target.value; setSpeed(value); if (isYouTube) youtube.current?.setPlaybackRate?.(Number(value)); else if (native.current) native.current.playbackRate = Number(value) }}>{[.5, .75, 1, 1.25, 1.5, 2].map(value => <option key={value} value={value}>{value}×</option>)}</select></label></div>
+    <h3>{isYouTube ? 'YouTube source' : 'Original educational video'}</h3>
+    {isYouTube ? <><a className="button button-primary" href={youtubeLink(null) || undefined} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a><p className="studio-muted">Playback opens on YouTube in a new tab. Timestamp buttons open the corresponding source time when your transcript provides it. Video2Quiz does not download YouTube media.</p></> : <>
+      <div className="video-frame"><video ref={native} src={`${API}/videos/${video.id}/media`} controls playsInline preload="metadata" aria-label="Original source video" onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => { setDuration(event.currentTarget.duration); if (pendingSeek.current != null) { const value = pendingSeek.current; pendingSeek.current = null; jump(value) } }} onError={() => setError('The saved source video is unavailable or cannot be played by this browser.')}/></div>
+      <div className="player-toolbar"><span>{clock(time)} / {clock(duration)}</span><button className="button button-outline" onClick={() => jump(time - 10)}>−10 sec</button><button className="button button-outline" onClick={() => jump(time + 10)}>+10 sec</button><label>Speed <select aria-label="Playback speed" value={speed} onChange={event => { setSpeed(event.target.value); if (native.current) native.current.playbackRate = Number(event.target.value) }}>{[.5, .75, 1, 1.25, 1.5, 2].map(value => <option key={value} value={value}>{value}×</option>)}</select></label></div>
+    </>}
     {error && <p className="studio-error" role="alert">{error}</p>}
   </section>
 })
@@ -245,8 +194,8 @@ const QuizStudio = forwardRef(function QuizStudio({ video, onAttemptSaved }, ref
   const seek = seconds => player.current?.seek(seconds)
   useImperativeHandle(ref, () => ({ seek }))
 
-  return <section className="panel quiz-panel studio" aria-labelledby="quiz-heading">
-    <div className="section-heading"><div><span className="section-kicker">VIDEO #{video.id} · STUDY SPACE</span><h2 id="quiz-heading">Quiz dashboard</h2><p>{video.original_filename || video.stored_filename}</p></div>{quiz?.quiz_version && <span className="version-tag">VERSION {quiz.quiz_version}</span>}</div>
+  return <section className="panel quiz-panel studio" aria-labelledby={`quiz-heading-${video.id}`}>
+    <div className="section-heading"><div><span className="section-kicker">VIDEO #{video.id} · STUDY SPACE</span><h2 id={`quiz-heading-${video.id}`}>Quiz dashboard</h2><p>{video.original_filename || video.stored_filename}</p></div>{quiz?.quiz_version && <span className="version-tag">VERSION {quiz.quiz_version}</span>}</div>
     <VideoPlayer video={video} ref={player}/>
     <section className="quiz-configuration" aria-label="Quiz Configuration">
       <div className="studio-heading"><div><h3>Quiz Configuration</h3><p>Choose your mix of recall, understanding, and analysis.</p></div><strong className="total-count">{total} <small>questions</small></strong></div>
@@ -278,7 +227,7 @@ const QuizStudio = forwardRef(function QuizStudio({ video, onAttemptSaved }, ref
       {result && <><ResultAnalysis result={result} seek={seek}/><button className="button button-primary" onClick={retake}>Retake Quiz</button></>}
     </>}
     {!loading && !questions.length && <p className="studio-muted">No saved quiz yet. Configure question counts above after the transcript is ready.</p>}
-    {transcript && <details className="transcript-details"><summary>Source transcript · {transcript.segments.length} timestamped segments</summary><div className="transcript-segments">{transcript.segments.map((segment, i) => <p key={i}><button className="text-button" onClick={() => seek(segment.start)}>{clock(segment.start)}</button> {segment.text}</p>)}</div></details>}
+    {transcript && <details className="transcript-details"><summary>Source transcript · {transcript.segments.length} segments{transcript.segments.some(segment => segment.start != null) ? " · timestamps available" : " · no timestamps supplied"}</summary><div className="transcript-segments">{transcript.segments.map((segment, i) => <p key={i}>{segment.start != null && <button className="text-button" onClick={() => seek(segment.start)}>{clock(segment.start)}</button>} {segment.text}</p>)}</div></details>}
   </section>
 })
 

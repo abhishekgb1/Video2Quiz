@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './style.css'
 import './studio.css'
 import QuizStudio, { ResultAnalysis } from './QuizStudio'
+import YouTubeQuiz, { RightsNotice, PermissionCheckbox } from './YouTubeQuiz'
 
 const API = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 const ACCEPTED_EXTENSIONS = ['.mp4', '.mov', '.mkv', '.webm', '.avi']
@@ -59,7 +60,7 @@ function App() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('video2quiz-theme') === 'light' ? 'light' : 'dark' } catch { return 'dark' } })
   useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem('video2quiz-theme', theme) } catch { /* Storage can be unavailable in private contexts. */ } }, [theme])
   const [file, setFile] = useState(null)
-  const [url, setUrl] = useState('')
+  const [rights, setRights] = useState(false)
   const [videos, setVideos] = useState([])
   const [showAllVideos, setShowAllVideos] = useState(false)
   const [videosLoading, setVideosLoading] = useState(true)
@@ -79,11 +80,11 @@ function App() {
   async function refresh({ silent = false } = {}) {
     if (!silent) setVideosLoading(true)
     try {
-      const response = await fetch(`${API}/videos`)
+      const response = await fetch(`${API}/videos?source_type=upload`)
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw Error(result.detail || 'Could not load your videos.')
       const allVideos = Array.isArray(result) ? result : []
-      setVideos(allVideos)
+      setVideos(allVideos.filter(video => video.source_type === 'upload'))
       setVideoError('')
       setSelected(current => current ? (allVideos.find(video => video.id === current.id) || current) : current)
     } catch (error) {
@@ -169,8 +170,10 @@ function App() {
 
   async function upload() {
     if (!file) return setMessage('Choose a video file first.')
+    if (!rights) return setMessage('Confirm your rights and permissions before processing.')
     const data = new FormData()
     data.append('file', file)
+    data.append('rights_confirmed', String(rights))
     setBusy(true)
     setMessage('Uploading video…')
     try {
@@ -184,28 +187,6 @@ function App() {
       await openVideo(result)
     } catch (error) {
       setMessage(error.message || 'Upload failed.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function youtube() {
-    if (!url.trim()) return setMessage('Paste a YouTube URL first.')
-    setBusy(true)
-    setMessage('Submitting YouTube URL…')
-    try {
-      const response = await fetch(`${API}/videos/youtube`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
-      })
-      const result = await response.json()
-      if (!response.ok) throw Error(result.detail || 'Could not submit this URL.')
-      setUrl('')
-      setMessage(`YouTube video #${result.id} was accepted. Download and processing status will update here.`)
-      await refresh({ silent: true })
-      await openVideo(result)
-    } catch (error) {
-      setMessage(error.message || 'Could not submit this URL.')
     } finally {
       setBusy(false)
     }
@@ -264,6 +245,7 @@ function App() {
         <div className="nav-caption">WORKSPACE</div>
         <nav className="side-nav">
           <a className="nav-link active" href="#dashboard" aria-label="Dashboard" aria-current="page" title="Dashboard"><Icon name="grid"/><span>Dashboard</span></a>
+          <a className="nav-link" href="#youtube-quiz"><Icon name="link"/><span>YouTube Quiz</span></a>
           <a className="nav-link" href="#create-quiz" aria-label="Create quiz" title="Create quiz"><Icon name="plus"/><span>Create quiz</span></a>
           <a className="nav-link" href={selected ? '#quiz-history' : '#library'} aria-label="Quiz history" title="Quiz history"><Icon name="history"/><span>Quiz history</span></a>
         </nav>
@@ -296,7 +278,7 @@ function App() {
         </section>
 
         <section className="stats-grid" aria-label="Video library statistics">
-          <article className="stat-card"><div className="stat-icon purple"><Icon name="play"/></div><div><span>Recent videos</span><strong>{videosLoading && !videos.length ? '—' : stats.total}</strong></div><small>Returned by the API</small></article>
+          <article className="stat-card"><div className="stat-icon purple"><Icon name="play"/></div><div><span>Uploaded videos</span><strong>{videosLoading && !videos.length ? '—' : stats.total}</strong></div><small>Returned by the API</small></article>
           <article className="stat-card"><div className="stat-icon green"><Icon name="check"/></div><div><span>Ready to study</span><strong>{videosLoading && !videos.length ? '—' : stats.ready}</strong></div><small>Processing completed</small></article>
           <article className="stat-card"><div className="stat-icon blue"><Icon name="clock"/></div><div><span>In progress</span><strong>{videosLoading && !videos.length ? '—' : stats.processing}</strong></div><small>Live backend statuses</small></article>
         </section>
@@ -315,16 +297,12 @@ function App() {
               <button type="button" className="button button-quiet" onClick={() => fileInputRef.current?.click()} disabled={busy}>{file ? 'Choose another file' : 'Browse files'}</button>
               <small>MP4 · MOV · MKV · WEBM · AVI</small>
             </div>
+            <PermissionCheckbox checked={rights} onChange={setRights}/>
             <div className="upload-actions">
-              <button className="button button-primary full-button" disabled={busy || !file} onClick={upload}>{busy ? <><span className="spinner"/> Uploading…</> : <>Upload and process <Icon name="arrow" size={16}/></>}</button>
+              <button className="button button-primary full-button" disabled={busy || !file || !rights} onClick={upload}>{busy ? <><span className="spinner"/> Uploading…</> : <>Upload and process <Icon name="arrow" size={16}/></>}</button>
               <span className="server-note">Upload progress is not provided by the current API.</span>
             </div>
-            <div className="divider-label"><span/> OR USE A VIDEO LINK <span/></div>
-            <div className="url-entry">
-              <label className="url-field"><Icon name="link" size={17}/><input value={url} onChange={event => setUrl(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !busy) youtube() }} placeholder="Paste a public YouTube URL" aria-label="Public YouTube URL"/></label>
-              <button className="button button-outline" disabled={busy || !url.trim()} onClick={youtube}>Add link</button>
-            </div>
-            <p className="input-footnote">YouTube availability depends on the source video and backend access.</p>
+            <RightsNotice/>
             {message && <div className="toast-message" role="status" aria-live="polite">{message}</div>}
           </section>
 
@@ -342,10 +320,10 @@ function App() {
         </div>
 
         <section className="panel library-panel" id="library" aria-labelledby="library-heading">
-          <div className="section-heading library-heading"><div><span className="section-kicker">YOUR WORKSPACE</span><h2 id="library-heading">Recent videos</h2><p>Choose a video to view its processing details, transcript, and quiz.</p></div><div className="library-actions">{sortedVideos.length > 3 && <button className="view-all-link" onClick={() => setShowAllVideos(value => !value)} aria-expanded={showAllVideos}>{showAllVideos ? 'Show latest 3' : 'View All'} <Icon name="arrow" size={13}/></button>}<button className="button button-outline" onClick={() => refresh()} disabled={videosLoading}><Icon name="refresh" size={15}/>{videosLoading ? 'Refreshing' : 'Refresh'}</button></div></div>
+          <div className="section-heading library-heading"><div><span className="section-kicker">YOUR WORKSPACE</span><h2 id="library-heading">Uploaded videos</h2><p>Choose a video to view its processing details, transcript, and quiz.</p></div><div className="library-actions">{sortedVideos.length > 3 && <button className="view-all-link" onClick={() => setShowAllVideos(value => !value)} aria-expanded={showAllVideos}>{showAllVideos ? 'Show latest 3' : 'View All'} <Icon name="arrow" size={13}/></button>}<button className="button button-outline" onClick={() => refresh()} disabled={videosLoading}><Icon name="refresh" size={15}/>{videosLoading ? 'Refreshing' : 'Refresh'}</button></div></div>
           {videoError && <div className="inline-alert error-alert" role="alert"><Icon name="alert"/><span>{videoError}</span><button className="text-button" onClick={() => refresh()}>Try again</button></div>}
           {videosLoading && !videos.length ? <div className="library-state" role="status"><span className="spinner dark-spinner"/> Loading your videos…</div>
-            : !videoError && videos.length === 0 ? <div className="library-state empty-state"><span className="empty-library-icon"><Icon name="play" size={22}/></span><strong>Your video library is ready</strong><p>Upload a learning video or add a public YouTube link to get started.</p><a className="text-button" href="#create-quiz">Add your first video <Icon name="arrow" size={14}/></a></div>
+            : !videoError && videos.length === 0 ? <div className="library-state empty-state"><span className="empty-library-icon"><Icon name="play" size={22}/></span><strong>Your video library is ready</strong><p>Upload an authorized learning video to get started.</p><a className="text-button" href="#create-quiz">Add your first video <Icon name="arrow" size={14}/></a></div>
               : <div className="video-table-wrap"><table className="video-table"><thead><tr><th>VIDEO</th><th>SOURCE</th><th>ADDED</th><th>STATUS</th><th/></tr></thead><tbody>{displayedVideos.map(video => <tr key={video.id} className={selected?.id === video.id ? 'row-selected' : ''}>
                 <td><div className="table-video"><span className="table-video-icon"><Icon name="play" size={16}/></span><span><strong>{video.original_filename || video.stored_filename || `Video #${video.id}`}</strong><small>Video #{video.id}</small></span></div></td>
                 <td><span className="source-label">{video.source_type === 'youtube' ? <Icon name="link" size={14}/> : <Icon name="upload" size={14}/>} {video.source_type}</span></td>
@@ -370,6 +348,7 @@ function App() {
           </section>
         </>}
 
+        <YouTubeQuiz/>
         <footer className="page-footer"><span>Video2Quiz AI Learning Studio</span><span>Built around your real video library and saved quiz results.</span></footer>
       </main>
     </div>

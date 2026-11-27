@@ -25,7 +25,7 @@ def generate_baseline_questions(transcript: dict, count: int = 5):
     for seg in transcript.get("segments") or []:
         sentence = str(seg.get("text", "")).strip()
         if len(sentence.split()) >= 7:
-            candidates.append((sentence, int(float(seg.get("start", 0)))))
+            candidates.append((sentence, int(float(seg["start"])) if seg.get("start") is not None else None))
     if not candidates:
         candidates = [(s, None) for s in _sentences(transcript.get("text", ""))]
     words = [w.lower() for w in re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", transcript.get("text", ""))]

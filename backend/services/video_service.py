@@ -10,7 +10,7 @@ def process_video(video_id: int):
     db: Session = SessionLocal()
     try:
         video = db.query(Video).filter(Video.id == video_id).first()
-        if not video:
+        if not video or video.source_type != "upload":
             return
         from backend.services import object_storage
         if object_storage.enabled() and not video.original_object_key:

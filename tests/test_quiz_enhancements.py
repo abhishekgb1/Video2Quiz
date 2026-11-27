@@ -34,7 +34,7 @@ def add_transcript(video_id):
 
 
 def test_configuration_defaults_and_resource_limits(monkeypatch):
-    assert QuizConfiguration().total_questions == 12
+    assert QuizConfiguration().total_questions == 36
     for counts in [(0, 0, 0), (-1, 1, 1), (61, 0, 0)]:
         with pytest.raises(ValidationError):
             QuizConfiguration(easy_count=counts[0], medium_count=counts[1], hard_count=counts[2], question_generation_mode="custom")
@@ -93,8 +93,8 @@ def test_default_job_persists_exact_distribution_with_provider_fixture(client, m
     job = client.post(f"/api/videos/{video_id}/generate", json={}).json()
     assert client.get(f"/api/videos/generations/{job['id']}").json()["status"] == "completed"
     quiz = client.get(f"/api/videos/{video_id}/quiz").json()
-    assert len(quiz["questions"]) == 12
-    assert quiz["difficulty_counts"] == {"easy": 4, "medium": 4, "hard": 4}
+    assert len(quiz["questions"]) == 36
+    assert quiz["difficulty_counts"] == {"easy": 12, "medium": 12, "hard": 12}
 
 
 def test_incomplete_provider_distribution_never_publishes_partial_quiz(client, monkeypatch):
@@ -119,7 +119,7 @@ def test_processing_waits_for_user_configuration_before_generating(client, monke
     monkeypatch.setattr(video_service, "transcribe_audio", lambda *_: {**source, "language": "en"})
     monkeypatch.setattr(media_service, "prepare_browser_video", lambda *_: tmp_path / "playback.mp4")
     monkeypatch.setattr(object_storage, "enabled", lambda: False)
-    response = client.post("/api/videos/upload", files={"file": ("lesson.mp4", b"test source", "video/mp4")})
+    response = client.post("/api/videos/upload", data={"rights_confirmed": "true"}, files={"file": ("lesson.mp4", b"test source", "video/mp4")})
     identifier = response.json()["id"]
     video_service.process_video(identifier)
     with database.SessionLocal() as db:

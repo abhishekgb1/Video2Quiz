@@ -22,7 +22,7 @@ def serialize_job(job):
 
 @router.get("/quiz-settings")
 def quiz_settings():
-    return {"default": {"easy_count": 4, "medium_count": 4, "hard_count": 4},
+    return {"default": {"easy_count": 12, "medium_count": 12, "hard_count": 12},
             "max_questions": int(os.getenv("MAX_QUIZ_QUESTIONS", "60")),
             "ai_configured": bool(os.getenv("OLLAMA_MODEL", "").strip()),
             "baseline_difficulties": ["easy"], "visual_context_available": False}
@@ -74,6 +74,8 @@ def media(video_id: int, request: Request, db: Session = Depends(get_db)):
     video = db.get(Video, video_id)
     if not video:
         raise HTTPException(404, "Video not found.")
+    if video.source_type == "youtube":
+        raise HTTPException(410, "YouTube media is not served by this application. Open the source on YouTube.")
     if video.playback_object_key:
         from backend.services.object_storage import open_playback
         from botocore.exceptions import BotoCoreError, ClientError

@@ -8,7 +8,6 @@ Current development checkpoint: React/Vite quiz dashboard, configurable generati
 - FastAPI backend with Swagger docs and Postman-ready endpoints
 - MySQL and PostgreSQL persistence via SQLAlchemy and Alembic migrations
 - Video upload with extension and size validation
-- Public YouTube URL ingestion via yt-dlp
 - FFmpeg audio extraction
 - Whisper transcription with timestamped segments
 - Baseline transcript-derived MCQs stored in MySQL
@@ -82,8 +81,6 @@ Use the actual video ID returned by the API. Keep the backend running while proc
 - Access denied: check username/password and grants.
 - `ffmpeg` not recognized: add the folder containing `ffmpeg.exe` (e.g. `C:\\ffmpeg\\bin`) to Windows PATH and restart VS Code.
 - Whisper can be slow. Set `WHISPER_MODEL=tiny` in `.env` for an initial test.
-- YouTube downloads require yt-dlp's JavaScript challenge solver and a supported JavaScript runtime. Install the project requirements in the backend venv with `python -m pip install -r requirements.txt`; Node.js 22+ is enabled automatically when it is on PATH. Restart the backend after installing or updating dependencies. The app retries transient requests and shows a shorter troubleshooting message; technical details remain in the backend terminal.
-- If YouTube requires you to sign in, close the browser first, then set `YOUTUBE_COOKIES_FROM_BROWSER=chrome` in `.env` (or `edge` / `firefox`) and restart the backend. This reads your browser's YouTube session; keep `.env` private. Cookie access is not a workaround for content you are not authorized to access.
 - YouTube can still block automated downloads based on video restrictions, account checks, or network/firewall rules. In that case, upload a video file you have permission to use. Follow YouTube's terms.
 
 ## Database migrations
@@ -119,3 +116,5 @@ Manage the database at https://console.neon.tech/app/projects/ancient-tooth-5745
 ### Windows processing dependencies
 
 Start the backend with `.\start-backend.ps1` after installing requirements into `.venv`. The script refreshes PATH and checks FFmpeg and Whisper before serving requests. FFmpeg is installed for this Windows user in `%LOCALAPPDATA%\Video2Quiz\bin` (bundled Windows binary from imageio-ffmpeg); this folder is on the user PATH. Restart existing terminals/services after PATH changes. The first transcription downloads the configured Whisper model and requires internet access. `WHISPER_MODEL=tiny` is configured locally for CPU processing.
+
+YouTube quizzes use user-provided authorized TXT, SRT or VTT transcripts. YouTube media and captions are never downloaded automatically. Watch, Shorts and youtu.be links open on YouTube in a new tab. Uploaded videos and YouTube transcript quizzes have separate libraries; old records are preserved. Confirm content rights before importing. Plain TXT transcripts have no timestamps. Default quiz: 12 Easy, 12 Medium, 12 Hard. A configured Ollama model is required for Medium/Hard; the free baseline provides Easy recall only.

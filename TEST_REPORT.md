@@ -55,3 +55,16 @@ GitHub CI exposed a configuration dependency in the malformed-range test: the im
 - Vercel CLI deployment works. GitHub auto-deploy linking requires the owner to add a GitHub Login Connection in Vercel.
 - Current Windows DNS prevents direct local connections to Neon; no global DNS/network settings were changed.
 - No paid resources were enabled. Free-host cold starts and resource/bandwidth quotas apply.
+
+
+## Authorized YouTube integration — 27 November 2026
+
+- Removed yt-dlp downloading, browser cookie configuration, the downloader dependency, and YouTube media serving. The old submission API now validates links and returns transcript guidance; retry returns HTTP 410 without scheduling work.
+- Uploaded-video list defaults to source_type=upload; a separate source_type=youtube list preserves access to legacy records and transcript quizzes. No existing records or schema columns were deleted or overwritten. No production migration is required.
+- Added rights confirmation to video and transcript import. Imported UTF-8 TXT, SRT and VTT are saved using existing Video/Transcript models. TXT segments have no start times; generated TXT questions have null timestamps. Subtitle cues retain supplied timings.
+- Added a separate YouTube Quiz workspace with watch/Shorts/youtu.be URL validation, secure external links, paste/file inputs, versioned generation, exam/practice/results and saved attempt history.
+- Restored the latest requested default distribution: 12 Easy, 12 Medium, 12 Hard (36 total).
+- Automated verification: 70 backend tests passed; frontend production build passed. Added end-to-end API tests for transcript import, saved questions, null timestamps, valid/invalid URLs, subtitle parsing, permissions, disabled downloading, and uploaded-only lists.
+- Localhost frontend/backend ran on ports 5174/8001. Local Neon DNS resolution failed, so browser workflow tests used an isolated SQLite database and isolated media directory with process-only environment overrides. Production .env and cloud records were left unchanged.
+- Local browser verified authorized pasted transcript import, Easy quiz generation, uploaded-only statistics, direct video upload, and Light theme persistence after reload.
+- Limitations: official captions OAuth/API integration is optional and was not added. No model provider is configured; Medium/Hard requests still fail honestly with a configuration message, while Easy baseline generation works. A 36-question AI quiz is validated through a provider fixture, not a live model.

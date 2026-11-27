@@ -98,20 +98,12 @@ def test_upload_rejects_unsupported_extension(client):
     assert response.status_code == 400
 
 
-def test_retry_youtube_preserves_record_and_rejects_duplicate_retry(client, monkeypatch):
-    calls = []
-    monkeypatch.setattr(videos_api, "download_and_process_youtube", lambda *args: calls.append(args))
-    with database.SessionLocal() as db:
-        video = Video(source_type="youtube", stored_filename="pending", file_path="", source_url="https://www.youtube.com/watch?v=_t3pBsFMBVU", status="failed", error_message="Download failed")
-        db.add(video); db.commit(); db.refresh(video)
-        video_id = video.id
-    response = client.post(f"/api/videos/{video_id}/retry")
-    assert response.status_code == 202
-    assert response.json()["id"] == video_id
-    assert response.json()["error_message"] is None
-    assert calls == [(video_id, "https://www.youtube.com/watch?v=_t3pBsFMBVU")]
-    assert client.post(f"/api/videos/{video_id}/retry").status_code == 409
-    assert client.post("/api/videos/99999/retry").status_code == 404
+def test_youtube_download_workflow_is_disabled(client):
+    assert client.post("/api/videos/6/retry").status_code == 410
+    response = client.post("/api/videos/youtube", json={"url": "https://youtu.be/_t3pBsFMBVU"})
+    assert response.status_code == 200
+    assert "authorized transcript" in response.json()["message"]
+    assert client.get("/api/videos?source_type=youtube").json() == []
 
 
 def test_youtube_rejects_non_youtube_host(client):
@@ -123,6 +115,7 @@ def test_upload_persists_video_and_creates_file(client, tmp_path):
     response = client.post(
         "/api/videos/upload",
         files={"file": ("lesson.mp4", b"test video bytes", "video/mp4")},
+        data={"rights_confirmed": "true"},
     )
     assert response.status_code == 202
     video = response.json()

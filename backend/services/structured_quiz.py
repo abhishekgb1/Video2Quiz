@@ -74,7 +74,7 @@ def validate_batch(batch, segments, difficulty, existing):
         accepted.append({"question_text": q.question_text.strip(), "options": options,
                          "correct_answer": q.correct_answer, "explanation": q.explanation.strip(),
                          "difficulty": difficulty, "evidence": "\n".join(quotes),
-                         "timestamp_seconds": int(float(segments[q.evidence[0].segment_index].get("start", 0)))})
+                         "timestamp_seconds": int(float(segments[q.evidence[0].segment_index]["start"])) if segments[q.evidence[0].segment_index].get("start") is not None else None})
     return accepted
 
 
@@ -82,7 +82,7 @@ def build_questions(transcript, counts, progress=lambda *_: None):
     segments = transcript.get("segments") or []
     segments = [s for s in segments if str(s.get("text", "")).strip()]
     if not segments:
-        raise InsufficientContent("Timestamped educational speech is required to generate source-linked questions.")
+        raise InsufficientContent("Educational transcript content is required to generate source-linked questions.")
     model = os.getenv("OLLAMA_MODEL", "").strip()
     fallback_reason = ""
     if model:
@@ -135,7 +135,7 @@ def build_questions(transcript, counts, progress=lambda *_: None):
         raise InsufficientContent(fallback_reason + f"Only {len(candidates)} unique Easy questions are supported by this transcript; {counts['easy']} were requested. Reduce the count. Your previous quiz is preserved.")
     for item in candidates:
         timestamp = item["timestamp_seconds"]
-        matching = next((s for s in segments if int(float(s.get("start", 0))) == timestamp), None)
+        matching = next((s for s in segments if (int(float(s["start"])) if s.get("start") is not None else None) == timestamp and item["correct_answer"].casefold() in s["text"].casefold()), None)
         if matching is None:
             raise InsufficientContent("The baseline could not link a question to timestamped evidence.")
         item["evidence"] = matching["text"]
