@@ -1,6 +1,7 @@
 """Private branch-scoped S3 storage; credentials never reach the frontend."""
 import mimetypes
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
@@ -41,6 +42,17 @@ def signed_playback(key):
     if not key or not key.startswith("videos/") or ".." in key.split("/"):
         raise ValueError("Invalid stored media key.")
     return client().generate_presigned_url("get_object", Params={"Bucket": os.environ["MEDIA_BUCKET"], "Key": key}, ExpiresIn=3600)
+
+
+def open_playback(key, byte_range=None):
+    if not key or not key.startswith("videos/") or ".." in key.split("/"):
+        raise ValueError("Invalid stored media key.")
+    parameters = {"Bucket": os.environ["MEDIA_BUCKET"], "Key": key}
+    if byte_range is not None:
+        if not re.fullmatch(r"bytes=(?:\d+-\d*|-\d+)", byte_range):
+            raise ValueError("Only a single byte range is supported.")
+        parameters["Range"] = byte_range
+    return client().get_object(**parameters)
 
 
 def restore_original(key, destination: Path):

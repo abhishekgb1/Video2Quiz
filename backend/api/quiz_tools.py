@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.database.database import get_db
@@ -70,13 +70,45 @@ def generation_history(video_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{video_id}/media", tags=["Media"])
-def media(video_id: int, db: Session = Depends(get_db)):
+def media(video_id: int, request: Request, db: Session = Depends(get_db)):
     video = db.get(Video, video_id)
     if not video:
         raise HTTPException(404, "Video not found.")
     if video.playback_object_key:
-        from backend.services.object_storage import signed_playback
-        return RedirectResponse(signed_playback(video.playback_object_key), status_code=307)
+        from backend.services.object_storage import open_playback
+        from botocore.exceptions import BotoCoreError, ClientError
+        key = video.playback_object_key
+        # A long video stream must not hold a database connection open.
+        db.close()
+        try:
+            asset = open_playback(key, request.headers.get("range"))
+        except ValueError:
+            raise HTTPException(416, "The requested media byte range is invalid.")
+        except ClientError as error:
+            code = error.response.get("Error", {}).get("Code")
+            if code == "InvalidRange":
+                raise HTTPException(416, "The requested media byte range is unavailable.")
+            if code in {"NoSuchKey", "NotFound", "404"}:
+                raise HTTPException(404, "The stored video is unavailable.")
+            raise HTTPException(503, "Cloud video storage is temporarily unavailable.")
+        except BotoCoreError:
+            raise HTTPException(503, "Cloud video storage is temporarily unavailable.")
+        body = asset["Body"]
+
+        def chunks():
+            try:
+                yield from body.iter_chunks(chunk_size=256 * 1024)
+            finally:
+                body.close()
+
+        headers = {"Accept-Ranges": "bytes", "Content-Length": str(asset["ContentLength"]),
+                   "Cache-Control": "private, max-age=300"}
+        if asset.get("ContentRange"):
+            headers["Content-Range"] = asset["ContentRange"]
+        if asset.get("ETag"):
+            headers["ETag"] = asset["ETag"]
+        return StreamingResponse(chunks(), status_code=206 if asset.get("ContentRange") else 200,
+                                 media_type=asset.get("ContentType", "video/mp4"), headers=headers)
     parsed = urlparse(video.file_path)
     if parsed.scheme == "https":
         allowed = {host.strip() for host in os.getenv("CLOUD_MEDIA_HOSTS", "").split(",") if host.strip()}

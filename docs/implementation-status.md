@@ -1,6 +1,6 @@
 # Development checkpoint
 
-Updated on 26 November 2026. The free demo is deployed; advanced AI and multi-user security remain unfinished.
+Updated on 27 November 2026. The free demo is deployed; advanced AI and multi-user security remain unfinished.
 
 ## Implemented
 
@@ -16,7 +16,7 @@ Updated on 26 November 2026. The free demo is deployed; advanced AI and multi-us
 
 ## Executed verification
 
-- The checkpoint passed 60 automated tests; the resumed work adds a regression check that processing waits for user configuration. Final test output is reported in the accompanying chat.
+- Latest automated run: 63 tests passed, including benchmark tests, configuration-before-generation, and streamed cloud-media range/cleanup checks. See TEST_REPORT.md for the executed live test ledger.
 - Frontend production build passed.
 - Browser: four Easy questions generated from the real saved transcript and persisted as a new version; prior version remained accessible.
 - Browser: practice feedback, submission, saved results, and difficulty filtering exercised.
@@ -74,6 +74,8 @@ Stop local servers with Ctrl+C in their terminals. Local secrets, database backu
 - Database readiness: https://video2quiz.onrender.com/health/ready
 - Public source repository: https://github.com/abhishekgb1/Video2Quiz
 
-A newly generated educational clip was actually transcribed locally with Whisper, uploaded to private Neon media storage, and used to generate four Easy questions. Server grading matched independently calculated database answers; the saved result was retrieved successfully. Production browser tests used this shared database and cloud media. Production-side video processing is checked separately; reading an already-processed clip does not prove cloud transcription works.
+A newly generated educational clip was actually transcribed locally with Whisper, uploaded to private Neon media storage, and used to generate four Easy questions. Server grading matched independently calculated database answers; the saved result was retrieved successfully. Production browser tests used this shared database and cloud media. A second clip (test video 5) was then uploaded through the production frontend and actually processed by FFmpeg and Whisper on Render Free: 590 transcript characters and 8 timestamped segments. Four Easy questions were generated from that cloud transcript; the production practice attempt saved 1 correct, 1 incorrect and 2 unanswered (25%).
 
 Video processing now stops at `ready_for_quiz` after transcription, allowing configuration before generation. Silent videos retain `completed_no_speech`. Successful generation marks the video completed, and regeneration preserves earlier versions.
+
+Cloud-media delivery now supports streaming byte ranges through the backend, avoiding browser dependence on direct Neon DNS resolution. The current Windows network cannot resolve Neon hosts; the deployed backend remains connected. Full verification details and remaining limitations are in `TEST_REPORT.md`.

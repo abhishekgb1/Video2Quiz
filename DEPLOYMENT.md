@@ -32,6 +32,8 @@ The API environment variable is saved in Vercel for Production, Preview and Deve
 
 ## Limits
 
-Render Free has 512 MB RAM, limited CPU, cold starts, and an ephemeral local disk. Cloud transcription must be verified against those limits; do not infer successful processing from a healthy API. Free included bandwidth/build quotas apply. Neon free quotas also apply. No paid upgrades were enabled.
+Render Free has 512 MB RAM, limited CPU, cold starts, and an ephemeral local disk. A 43-second educational clip was actually processed on this free host with Whisper tiny. This does not establish capacity for long lectures or concurrent workloads. Free included bandwidth/build quotas apply. Neon free quotas also apply. No paid upgrades were enabled.
+
+Cloud playback is streamed through the backend with byte-range support; private storage credentials remain server-side. Backend bandwidth usage therefore includes playback traffic.
 
 This remains a shared single-user demo. Authentication, user-level isolation, durable processing recovery and a full advanced-AI quality evaluation are not complete. Do not use it for private multi-user examinations yet. Source-linked questions can inherit transcription errors and should be reviewed before formal assessment.

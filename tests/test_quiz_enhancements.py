@@ -176,6 +176,42 @@ def test_media_rejects_paths_outside_media_root(client, tmp_path):
     assert client.get(f"/api/videos/{video_id}/media").status_code == 404
 
 
+def test_cloud_video_streams_range_and_closes_storage_body(client, monkeypatch):
+    import io
+    from types import SimpleNamespace
+    from botocore.response import StreamingBody
+    from backend.services import object_storage
+    video_id, _ = create_processed_video()
+    with database.SessionLocal() as db:
+        db.get(Video, video_id).playback_object_key = f"videos/{video_id}/playback/test.mp4"
+        db.commit()
+    stream = io.BytesIO(b"test")
+    calls = []
+    def get_object(**parameters):
+        calls.append(parameters)
+        return {"Body": StreamingBody(stream, 4), "ContentLength": 4,
+                "ContentRange": "bytes 0-3/12", "ContentType": "video/mp4"}
+    monkeypatch.setenv("MEDIA_BUCKET", "test-media")
+    monkeypatch.setattr(object_storage, "client", lambda: SimpleNamespace(get_object=get_object))
+    response = client.get(f"/api/videos/{video_id}/media", headers={"Range": "bytes=0-3"})
+    assert response.status_code == 206 and response.content == b"test"
+    assert response.headers["content-range"] == "bytes 0-3/12"
+    assert response.headers["accept-ranges"] == "bytes"
+    assert calls[0]["Range"] == "bytes=0-3" and stream.closed
+
+
+def test_cloud_video_rejects_malformed_range_before_storage_request(client, monkeypatch):
+    from backend.services import object_storage
+    video_id, _ = create_processed_video()
+    with database.SessionLocal() as db:
+        db.get(Video, video_id).playback_object_key = f"videos/{video_id}/playback/test.mp4"
+        db.commit()
+    def forbidden_client():
+        raise AssertionError("Malformed range must not reach cloud storage")
+    monkeypatch.setattr(object_storage, "client", forbidden_client)
+    assert client.get(f"/api/videos/{video_id}/media", headers={"Range": "bytes=0-1,4-5"}).status_code == 416
+
+
 def sample_generated(difficulty="easy"):
     source = source_data()
     evidence = [{"segment_index": 0, "quote": source["segments"][0]["text"]}]
