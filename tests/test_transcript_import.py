@@ -2,7 +2,7 @@ import json
 import pytest
 from test_api import client, create_processed_video
 from backend.database import database
-from backend.models.video import Transcript
+from backend.models.video import Transcript, Video
 from backend.services.transcript_import import parse_transcript
 
 SOURCE = "Photosynthesis converts sunlight into stored chemical energy in plants. Evaporation changes liquid water into vapor when heat is supplied. Gravity attracts masses and keeps planets moving around the sun. Enzymes accelerate chemical reactions without being consumed during reactions."
@@ -47,3 +47,17 @@ def test_import_rejects_missing_permission_invalid_urls_and_invalid_files(client
     assert client.post("/api/videos/youtube/transcript", data={"url": "https://youtu.be/_t3pBsFMBVU", "rights_confirmed": "true"}, files={"file": ("bad.srt", b"no valid cues", "text/plain")}).status_code == 400
     with pytest.raises(ValueError):
         parse_transcript("1\n00:00:20,000 --> 00:00:10,000\nInvalid cue", ".srt")
+
+
+def test_legacy_failed_youtube_record_is_preserved_with_helpful_guidance(client):
+    with database.SessionLocal() as db:
+        video = Video(source_type="youtube", stored_filename="pending", file_path="", source_url="https://youtu.be/_t3pBsFMBVU", status="failed", error_message="Old download error")
+        db.add(video); db.commit(); db.refresh(video)
+        video_id = video.id
+    assert client.get("/api/videos").json() == []
+    assert client.get(f"/api/videos/{video_id}").json()["error_message"] == "Old download error"
+    for suffix in ["transcript", "quiz"]:
+        response = client.get(f"/api/videos/{video_id}/{suffix}")
+        assert response.status_code == 409
+        assert "authorized transcript" in response.json()["detail"]
+    assert client.get(f"/api/videos/{video_id}/media").status_code == 410

@@ -173,6 +173,8 @@ def get_transcript(video_id: int, db: Session = Depends(get_db)):
         video = db.query(Video).filter(Video.id == video_id).first()
         if not video:
             raise HTTPException(status_code=404, detail="Video not found.")
+        if video.source_type == "youtube":
+            raise HTTPException(409, YOUTUBE_GUIDANCE)
         raise HTTPException(status_code=409, detail=f"Transcript not available yet. Current status: {video.status}")
     return {"video_id": video_id, "text": transcript.text, "language": transcript.language,
             "segments": json.loads(transcript.segments_json or "[]")}
@@ -195,6 +197,8 @@ def get_quiz(video_id: int, db: Session = Depends(get_db), version: int | None =
         job = db.query(QuizGeneration).filter_by(video_id=video_id, quiz_version=quiz_version, status="completed").first()
         configuration = serialize_job(job) if job else None
     if not questions and video.status not in {"completed", "completed_no_speech", "ready_for_quiz"}:
+        if video.source_type == "youtube":
+            raise HTTPException(409, YOUTUBE_GUIDANCE)
         raise HTTPException(status_code=409, detail=f"Quiz not available yet. Current status: {video.status}")
     return {"video_id": video_id, "status": video.status, "quiz_version": quiz_version,
             "configuration": configuration,

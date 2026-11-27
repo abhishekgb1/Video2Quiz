@@ -94,6 +94,7 @@ def test_upload_rejects_unsupported_extension(client):
     response = client.post(
         "/api/videos/upload",
         files={"file": ("notes.txt", b"not a video", "text/plain")},
+        data={"rights_confirmed": "true"},
     )
     assert response.status_code == 400
 
