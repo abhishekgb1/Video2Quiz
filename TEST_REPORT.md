@@ -42,7 +42,9 @@ Backend and Swagger: https://video2quiz.onrender.com/docs
 
 The Windows network currently fails to resolve direct Neon database/storage hosts. The deployed backend remains connected. Earlier direct signed storage retrieval passed, but a repeat request on the Windows network failed at DNS resolution.
 
-The cloud media API now streams from private storage through the backend address instead of redirecting the browser to a Neon hostname. Added automated tests verify HTTP 206 byte-range delivery, correct range headers, closure of the upstream streaming body, and rejection of malformed ranges before any storage request. Production verification of this new route is recorded after deployment.
+The cloud media API now streams from private storage through the backend address instead of redirecting the browser to a Neon hostname. Added automated tests verify HTTP 206 byte-range delivery, correct range headers, closure of the upstream streaming body, and rejection of malformed ranges before any storage request. The deployed route passed full MP4 retrieval (HTTP 200), exact partial-content comparison (HTTP 206), and malformed-range rejection (HTTP 416) from the Windows network that cannot resolve Neon directly.
+
+GitHub CI exposed a configuration dependency in the malformed-range test: the implementation read `MEDIA_BUCKET` before validating input. Validation now runs first, and the regression test explicitly removes that variable. All 63 tests passed locally after that fix; the corresponding remote workflow is checked after pushing.
 
 ## Limits and incomplete checks
 

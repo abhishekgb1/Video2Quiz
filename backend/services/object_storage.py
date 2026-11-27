@@ -47,10 +47,11 @@ def signed_playback(key):
 def open_playback(key, byte_range=None):
     if not key or not key.startswith("videos/") or ".." in key.split("/"):
         raise ValueError("Invalid stored media key.")
-    parameters = {"Bucket": os.environ["MEDIA_BUCKET"], "Key": key}
     if byte_range is not None:
         if not re.fullmatch(r"bytes=(?:\d+-\d*|-\d+)", byte_range):
             raise ValueError("Only a single byte range is supported.")
+    parameters = {"Bucket": os.environ["MEDIA_BUCKET"], "Key": key}
+    if byte_range is not None:
         parameters["Range"] = byte_range
     return client().get_object(**parameters)
 

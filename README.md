@@ -15,11 +15,11 @@ Current development checkpoint: React/Vite quiz dashboard, configurable generati
 - Small React/Vite frontend to upload, track status, and view transcript/quiz
 
 ## Still to build
-Authentication, a durable processing queue, live AI model configuration and validation, topic analytics, and production deployment remain unfinished. Timed exams and persistent attempts are implemented.
+Authentication, a durable processing queue, live AI model configuration and validation, topic analytics, and production hardening remain unfinished. Timed exams and persistent attempts are implemented.
 The MCQ generator here is an extractive baseline and must be reviewed before formal use.
 
 ## Requirements
-Windows 10/11, Python 3.11, MySQL Server + Workbench, FFmpeg on PATH, Node.js 20+ for frontend.
+Windows 10/11, Python 3.11, FFmpeg on PATH, and Node.js 22+ for the frontend. Choose local MySQL or Neon PostgreSQL; MySQL is not required when using Neon.
 Run `ffmpeg -version` to verify FFmpeg.
 
 ## 1. Create database in MySQL Workbench
@@ -30,13 +30,13 @@ CREATE DATABASE video2quiz CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 Run Alembic migrations to create and update tables; application startup does not create them automatically.
 
 ## 2. Configure
-Copy `.env.example` to `.env` in the project root and edit the MySQL credentials.
+Copy `.env.example` to `.env` in the project root and set `DATABASE_URL` for your chosen MySQL or PostgreSQL database.
 Do not commit `.env` or share your database password.
 
 ## 3. Backend setup (PowerShell, project root)
 ```powershell
-py -3.11 -m venv venv
-.\venv\Scripts\Activate.ps1
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -56,7 +56,7 @@ Open http://127.0.0.1:8000/ and http://127.0.0.1:8000/docs
 ## 5. Start frontend (second terminal)
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 Open the Vite URL, normally http://localhost:5173.
@@ -93,7 +93,7 @@ Alembic is the schema lifecycle mechanism. The API startup no longer calls `Base
 For a **fresh database**, create an empty database, then run from the project root:
 
 ```powershell
-.\venv\Scripts\alembic.exe upgrade head
+.\.venv\Scripts\alembic.exe upgrade head
 ```
 
 The baseline creates the existing `videos`, `transcripts`, and `questions` schema, then the next migration adds `questions.quiz_version`. The following additive revision creates `exam_attempts` and `exam_responses`.

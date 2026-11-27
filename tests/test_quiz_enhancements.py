@@ -208,6 +208,7 @@ def test_cloud_video_rejects_malformed_range_before_storage_request(client, monk
         db.commit()
     def forbidden_client():
         raise AssertionError("Malformed range must not reach cloud storage")
+    monkeypatch.delenv("MEDIA_BUCKET", raising=False)
     monkeypatch.setattr(object_storage, "client", forbidden_client)
     assert client.get(f"/api/videos/{video_id}/media", headers={"Range": "bytes=0-1,4-5"}).status_code == 416
 
