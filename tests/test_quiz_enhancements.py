@@ -34,7 +34,7 @@ def add_transcript(video_id):
 
 
 def test_configuration_defaults_and_resource_limits(monkeypatch):
-    assert QuizConfiguration().total_questions == 36
+    assert QuizConfiguration().total_questions == 12
     for counts in [(0, 0, 0), (-1, 1, 1), (61, 0, 0)]:
         with pytest.raises(ValidationError):
             QuizConfiguration(easy_count=counts[0], medium_count=counts[1], hard_count=counts[2], question_generation_mode="custom")
@@ -93,8 +93,8 @@ def test_default_job_persists_exact_distribution_with_provider_fixture(client, m
     job = client.post(f"/api/videos/{video_id}/generate", json={}).json()
     assert client.get(f"/api/videos/generations/{job['id']}").json()["status"] == "completed"
     quiz = client.get(f"/api/videos/{video_id}/quiz").json()
-    assert len(quiz["questions"]) == 36
-    assert quiz["difficulty_counts"] == {"easy": 12, "medium": 12, "hard": 12}
+    assert len(quiz["questions"]) == 12
+    assert quiz["difficulty_counts"] == {"easy": 4, "medium": 4, "hard": 4}
 
 
 def test_incomplete_provider_distribution_never_publishes_partial_quiz(client, monkeypatch):

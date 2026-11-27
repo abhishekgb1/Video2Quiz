@@ -22,7 +22,7 @@ def serialize_job(job):
 
 @router.get("/quiz-settings")
 def quiz_settings():
-    return {"default": {"easy_count": 12, "medium_count": 12, "hard_count": 12},
+    return {"default": {"easy_count": 4, "medium_count": 4, "hard_count": 4},
             "max_questions": int(os.getenv("MAX_QUIZ_QUESTIONS", "60")),
             "ai_configured": bool(os.getenv("OLLAMA_MODEL", "").strip()),
             "baseline_difficulties": ["easy"], "visual_context_available": False}

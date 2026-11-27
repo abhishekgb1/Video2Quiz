@@ -7,9 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 class QuizConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    easy_count: int = Field(default=12, ge=0, strict=True)
-    medium_count: int = Field(default=12, ge=0, strict=True)
-    hard_count: int = Field(default=12, ge=0, strict=True)
+    easy_count: int = Field(default=4, ge=0, strict=True)
+    medium_count: int = Field(default=4, ge=0, strict=True)
+    hard_count: int = Field(default=4, ge=0, strict=True)
     question_generation_mode: Literal["default", "custom"] = "default"
 
     @property
@@ -21,8 +21,8 @@ class QuizConfiguration(BaseModel):
         maximum = int(os.getenv("MAX_QUIZ_QUESTIONS", "60"))
         if not 1 <= self.total_questions <= maximum:
             raise ValueError(f"Select between 1 and {maximum} questions overall.")
-        if self.question_generation_mode == "default" and (self.easy_count, self.medium_count, self.hard_count) != (12, 12, 12):
-            raise ValueError("Default Quiz requires 12 Easy, 12 Medium and 12 Hard questions.")
+        if self.question_generation_mode == "default" and (self.easy_count, self.medium_count, self.hard_count) != (4, 4, 4):
+            raise ValueError("Default Quiz requires 4 Easy, 4 Medium and 4 Hard questions.")
         return self
 
 class YouTubeRequest(BaseModel):

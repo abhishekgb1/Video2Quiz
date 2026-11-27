@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 
 const API = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 const LEVELS = ['easy', 'medium', 'hard']
-const DEFAULT = { easy_count: 12, medium_count: 12, hard_count: 12 }
+const DEFAULT = { easy_count: 4, medium_count: 4, hard_count: 4 }
 export const clock = value => `${Math.floor(Math.max(0, value || 0) / 60).toString().padStart(2, '0')}:${Math.floor(Math.max(0, value || 0) % 60).toString().padStart(2, '0')}`
 
 async function request(path, options) {
@@ -192,23 +192,26 @@ const QuizStudio = forwardRef(function QuizStudio({ video, onAttemptSaved }, ref
     finally { setBusy(false) }
   }
 
-  async function start() {
+  async function start(preservePosition = false) {
     setBusy(true); setError('')
     try {
       const next = await request(`/videos/${video.id}/attempts`, post({ idempotency_key: crypto.randomUUID(), mode, quiz_version: quiz.quiz_version, ...(mode === 'exam' ? { time_limit_seconds: Number(minutes) * 60 } : {}) }))
-      setAttempt(next); setQuiz(current => ({ ...current, questions: next.questions })); setAnswers({}); answersRef.current = {}; setFeedback({}); setResult(null); setIndex(0); setFilter('all'); setRetryLocked(false); pendingPayload.current = null
+      setAttempt(next); setQuiz(current => ({ ...current, questions: next.questions })); setAnswers({}); answersRef.current = {}; setFeedback({}); setResult(null); if (!preservePosition) { setIndex(0); setFilter('all') } setRetryLocked(false); pendingPayload.current = null
+      return next
     } catch (error) { setError(error.message) }
     finally { setBusy(false) }
   }
 
   async function choose(option) {
-    if (!active || busy || retryLocked) return
+    if (busy || retryLocked || result || (!active && mode !== 'practice')) return
     const id = question.id
+    const session = attempt || await start(true)
+    if (!session) return
     const next = { ...answersRef.current, [id]: option }
     answersRef.current = next; setAnswers(next)
-    if (attempt.mode === 'practice') {
+    if (session.mode === 'practice') {
       try {
-        const checked = await request(`/videos/attempts/${attempt.attempt_id}/practice/${id}`, post({ answer: option }))
+        const checked = await request(`/videos/attempts/${session.attempt_id}/practice/${id}`, post({ answer: option }))
         if (alive.current && answersRef.current[id] === option) setFeedback(current => ({ ...current, [id]: checked }))
       } catch (error) { setError(error.message) }
     }
@@ -250,12 +253,13 @@ const QuizStudio = forwardRef(function QuizStudio({ video, onAttemptSaved }, ref
       <p className="studio-muted">Generation method: {quiz.generation_method || 'baseline'}{quiz.configuration?.message ? ` · ${quiz.configuration.message}` : ''}</p>
       <div className="studio-metrics"><span>Total <b>{questions.length}</b></span>{LEVELS.map(level => <span className={level} key={level}>{level}<b>{questions.filter(q => q.difficulty === level).length}</b></span>)}<span>Attempted <b>{answered}</b></span><span>Remaining <b>{questions.length - answered}</b></span><span>Correct <b>{active && attempt.mode === 'exam' ? '—' : correct}</b></span><span>Incorrect <b>{active && attempt.mode === 'exam' ? '—' : incorrect}</b></span></div>
       <div className="quiz-progress"><label>Quiz progress <strong>{Math.round(answered / questions.length * 100)}%</strong></label><progress aria-label="Quiz progress" max={questions.length} value={answered}/></div>
-      {!attempt && <div className="session-setup"><label>Session <select aria-label="Quiz session mode" value={mode} onChange={event => setMode(event.target.value)}><option value="practice">Practice · instant feedback</option><option value="exam">Timed examination</option></select></label>{mode === 'exam' && <label>Minutes <input type="number" aria-label="Exam time limit in minutes" min="1" max="240" value={minutes} onChange={event => setMinutes(event.target.value)}/></label>}<button className="button button-primary" disabled={busy || running || (mode === 'exam' && (!Number.isInteger(Number(minutes)) || minutes < 1 || minutes > 240))} onClick={start}>{mode === 'exam' ? 'Start exam' : 'Start practice'}</button></div>}
+      {!attempt && <div className="session-setup"><label>Session <select aria-label="Quiz session mode" value={mode} onChange={event => setMode(event.target.value)}><option value="practice">Practice · instant feedback</option><option value="exam">Timed examination</option></select></label>{mode === 'exam' && <label>Minutes <input type="number" aria-label="Exam time limit in minutes" min="1" max="240" value={minutes} onChange={event => setMinutes(event.target.value)}/></label>}<button className="button button-primary" disabled={busy || running || (mode === 'exam' && (!Number.isInteger(Number(minutes)) || minutes < 1 || minutes > 240))} onClick={() => start()}>{mode === 'exam' ? 'Start exam' : 'Start practice'}</button></div>}
+      {!attempt && mode === 'practice' && <p className="studio-muted">Select an answer to start practice automatically, or use Start practice. For a timed exam, choose Timed examination and Start exam.</p>}
       {active && <div className="exam-banner"><strong>{attempt.mode === 'exam' ? 'Timed exam · feedback after submission' : 'Practice · explanations after each answer'}</strong>{attempt.expires_at && <span className="exam-timer" role="timer">Time left {clock(remaining)}</span>}</div>}
       <div className="studio-tabs" role="tablist" aria-label="Difficulty filters">{['all', ...LEVELS].map(level => <button role="tab" aria-selected={filter === level} className={`${level} ${filter === level ? 'selected' : ''}`} key={level} onClick={() => { setFilter(level); setIndex(0) }}>{level === 'all' ? 'All Questions' : level}</button>)}</div>
       <div className="question-workspace"><nav className="question-navigator" aria-label="Question navigation">{questions.map((q, i) => <button className={`${answers[q.id] != null ? 'answered' : 'unanswered'} ${question?.id === q.id ? 'current' : ''}`} aria-label={`Question ${i + 1}, ${answers[q.id] != null ? 'answered' : 'unanswered'}`} aria-current={question?.id === q.id ? 'step' : undefined} key={q.id} onClick={() => { setFilter('all'); setIndex(i) }}>{i + 1}</button>)}</nav>
         {question ? <article className="question-card studio-question"><div className="question-meta"><span>QUESTION {questions.indexOf(question) + 1} OF {questions.length}</span><span className={`difficulty-tag ${question.difficulty}`}>{question.difficulty}</span></div><h3>{question.question}</h3>{question.timestamp_seconds != null && <div className="timestamp-actions"><button className="text-button" onClick={() => seek(question.timestamp_seconds)}>Source: {clock(question.timestamp_seconds)}</button><button className="text-button" onClick={() => seek(question.timestamp_seconds)}>Watch Explanation</button></div>}
-          <div className="answer-options">{question.options.map((option, i) => <label className="answer-option" key={option}><input type="radio" name={`studio-question-${question.id}`} value={option} checked={answers[question.id] === option} disabled={!active || busy || retryLocked} onChange={() => choose(option)}/><span className="option-letter">{String.fromCharCode(65 + i)}</span><span>{option}</span></label>)}</div>
+          <div className="answer-options">{question.options.map((option, i) => <label className="answer-option" key={option}><input type="radio" name={`studio-question-${question.id}`} value={option} checked={answers[question.id] === option} disabled={Boolean(result) || (!active && mode !== 'practice') || busy || retryLocked} onChange={() => choose(option)}/><span className="option-letter">{String.fromCharCode(65 + i)}</span><span>{option}</span></label>)}</div>
           {currentFeedback && <div className={`answer-feedback ${currentFeedback.correct ? 'positive' : 'negative'}`}><strong>{currentFeedback.correct ? 'Correct answer' : currentFeedback.selected_answer == null ? 'Unanswered' : 'Review this answer'}</strong><p>Correct answer: {currentFeedback.correct_answer}</p><p>{currentFeedback.explanation}</p>{currentFeedback.evidence && <blockquote>{currentFeedback.evidence}</blockquote>}{question.timestamp_seconds != null && <button className="text-button" onClick={() => seek(question.timestamp_seconds)}>Watch Explanation · {clock(question.timestamp_seconds)}</button>}</div>}
         </article> : <p>No questions at this difficulty in this quiz version.</p>}
       </div>
