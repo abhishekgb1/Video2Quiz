@@ -98,6 +98,22 @@ def test_upload_rejects_unsupported_extension(client):
     assert response.status_code == 400
 
 
+def test_retry_youtube_preserves_record_and_rejects_duplicate_retry(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(videos_api, "download_and_process_youtube", lambda *args: calls.append(args))
+    with database.SessionLocal() as db:
+        video = Video(source_type="youtube", stored_filename="pending", file_path="", source_url="https://www.youtube.com/watch?v=_t3pBsFMBVU", status="failed", error_message="Download failed")
+        db.add(video); db.commit(); db.refresh(video)
+        video_id = video.id
+    response = client.post(f"/api/videos/{video_id}/retry")
+    assert response.status_code == 202
+    assert response.json()["id"] == video_id
+    assert response.json()["error_message"] is None
+    assert calls == [(video_id, "https://www.youtube.com/watch?v=_t3pBsFMBVU")]
+    assert client.post(f"/api/videos/{video_id}/retry").status_code == 409
+    assert client.post("/api/videos/99999/retry").status_code == 404
+
+
 def test_youtube_rejects_non_youtube_host(client):
     response = client.post("/api/videos/youtube", json={"url": "https://youtube.com.example.org/watch?v=x"})
     assert response.status_code == 400

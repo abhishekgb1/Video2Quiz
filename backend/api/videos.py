@@ -115,6 +115,20 @@ def submit_youtube(payload: YouTubeRequest, background_tasks: BackgroundTasks, d
     background_tasks.add_task(download_and_process_youtube, video.id, url)
     return video
 
+@router.post("/{video_id}/retry", response_model=VideoOut, status_code=202)
+def retry_youtube(video_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    video = db.query(Video).filter_by(id=video_id).with_for_update().first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found.")
+    if video.source_type != "youtube" or video.status != "failed":
+        raise HTTPException(status_code=409, detail="Only failed YouTube videos can be retried.")
+    url = validate_youtube_url(video.source_url or "")
+    video.status, video.error_message = "downloading", None
+    db.commit(); db.refresh(video)
+    background_tasks.add_task(download_and_process_youtube, video.id, url)
+    return video
+
+
 def download_and_process_youtube(video_id: int, url: str):
     from backend.database.database import SessionLocal
     db = SessionLocal()
@@ -125,7 +139,7 @@ def download_and_process_youtube(video_id: int, url: str):
         template = str(VIDEO_DIR / f"youtube_{video_id}.%(ext)s")
         options = {"format": "best[ext=mp4]/best",
                    "outtmpl": template, "merge_output_format": "mp4", "noplaylist": True,
-                   "quiet": True, "no_warnings": True, "socket_timeout": 30,
+                   "quiet": True, "no_warnings": False, "socket_timeout": 30,
                    "retries": 3, "extractor_retries": 3, "fragment_retries": 3}
         # yt-dlp needs an external JS runtime to solve YouTube's player
         # challenges. Prefer Node when installed; yt-dlp validates its version.
@@ -166,6 +180,9 @@ def download_and_process_youtube(video_id: int, url: str):
                 detail = ("YouTube requires a signed-in session for this video. Set "
                           "YOUTUBE_COOKIES_FROM_BROWSER=chrome (or edge/firefox) in .env and restart the backend, "
                           "or upload the video file directly.")
+            elif "failed to extract any player response" in message:
+                detail = ("YouTube did not provide a downloadable stream to the server. Embedded playback may still work. "
+                          "Retry processing, or upload the original video file if YouTube continues to restrict access.")
             elif "javascript runtime" in message or "challenge solver" in message or "yt-dlp-ejs" in message:
                 detail = ("YouTube download support is missing its JavaScript challenge solver. Install the backend "
                           "requirements with `python -m pip install -r requirements.txt`, then restart the backend.")

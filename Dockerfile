@@ -10,6 +10,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FRONTEND_DIST_DIR=/app/frontend/dist
 WORKDIR /app
+# yt-dlp executes YouTube's JavaScript challenges in the running backend.
+COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
+RUN node --version
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg build-essential \
     && rm -rf /var/lib/apt/lists/*
