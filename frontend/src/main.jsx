@@ -505,7 +505,7 @@ function App() {
               <div className="process-footer"><span>Last updated {formatDate(selected.updated_at)}</span><button type="button" className="text-button" onClick={() => refresh()}>Refresh status <Icon name="refresh" size={14}/></button></div>
             </> : <>
               <div className="empty-pipeline"><div className="empty-orbit"><Icon name="spark" size={26}/></div><strong>Your processing flow</strong><p>Select a video to see real status updates for ingestion, FFmpeg, Whisper, and quiz generation.</p></div>
-              <div className="pipeline compact-pipeline">{['Video ingestion', 'FFmpeg audio extraction', 'Whisper transcription', 'Quiz generation'].map((item, index) => <div className="pipeline-step pending" key={item}><span className="pipeline-node">{index + 1}</span><span className="pipeline-copy"><strong>{item}</strong><small>Waiting for a video</small></span><span className="pipeline-state">Queued</span></div>)}</div>
+                <div className="pipeline compact-pipeline">{['Video ingestion', 'FFmpeg audio extraction', 'Whisper transcription', 'Frame extraction and OCR', 'Multimodal quiz generation'].map((item, index) => <div className="pipeline-step pending" key={item}><span className="pipeline-node">{index + 1}</span><span className="pipeline-copy"><strong>{item}</strong><small>Waiting for a video</small></span><span className="pipeline-state">Queued</span></div>)}</div>
             </>}
           </section>
         </div>
