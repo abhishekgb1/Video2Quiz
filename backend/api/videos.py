@@ -24,7 +24,7 @@ from backend.schemas.video import (
 )
 from backend.services.quiz_service import latest_quiz_version, question_versioning_available
 from backend.services.video_service import process_video
-from backend.utils.storage import VIDEO_DIR, unique_video_path
+from backend.utils.storage import AUDIO_DIR, TRANSCRIPT_DIR, VIDEO_DIR, unique_video_path
 load_dotenv()
 router = APIRouter(prefix="/videos", tags=["Videos"])
 logger = logging.getLogger(__name__)
@@ -184,6 +184,53 @@ def download_and_process_youtube(video_id: int, url: str):
 @router.get("", response_model=list[VideoOut])
 def list_videos(db: Session = Depends(get_db)):
     return db.query(Video).order_by(Video.created_at.desc()).limit(100).all()
+
+
+def _delete_video_artifacts(video: Video) -> list[str]:
+    """Delete only files owned by this application's configured data folders."""
+    deleted = []
+    candidates = [
+        Path(video.file_path) if video.file_path else None,
+        AUDIO_DIR / f"video_{video.id}.wav",
+        TRANSCRIPT_DIR / f"video_{video.id}.json",
+    ]
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        resolved = candidate.resolve()
+        allowed = any(resolved == folder.resolve() or folder.resolve() in resolved.parents
+                      for folder in (VIDEO_DIR, AUDIO_DIR, TRANSCRIPT_DIR))
+        if allowed and resolved.is_file():
+            resolved.unlink()
+            deleted.append(resolved.name)
+    return deleted
+
+
+@router.delete("/{video_id}")
+def delete_video(video_id: Annotated[int, ApiPath(gt=0)], db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found.")
+    try:
+        attempt_ids = [row[0] for row in db.query(ExamAttempt.id).filter(ExamAttempt.video_id == video_id).all()]
+        if attempt_ids:
+            db.query(ExamResponse).filter(ExamResponse.attempt_id.in_(attempt_ids)).delete(
+                synchronize_session=False
+            )
+            db.query(ExamAttempt).filter(ExamAttempt.id.in_(attempt_ids)).delete(
+                synchronize_session=False
+            )
+        db.query(Question).filter(Question.video_id == video_id).delete(synchronize_session=False)
+        db.query(Transcript).filter(Transcript.video_id == video_id).delete(synchronize_session=False)
+        db.delete(video)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Could not delete video_id=%s", video_id)
+        raise HTTPException(status_code=500, detail="Could not delete this video and its saved quiz data.")
+
+    deleted_files = _delete_video_artifacts(video)
+    return {"video_id": video_id, "deleted": True, "deleted_files": deleted_files}
 
 @router.get("/{video_id}", response_model=VideoOut)
 def get_video(video_id: int, db: Session = Depends(get_db)):

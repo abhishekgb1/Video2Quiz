@@ -117,6 +117,25 @@ def test_upload_persists_video_and_creates_file(client, tmp_path):
     assert [item["id"] for item in listed] == [video["id"]]
 
 
+def test_delete_video_removes_saved_data_and_media(client, tmp_path):
+    response = client.post(
+        "/api/videos/upload",
+        files={"file": ("lesson.mp4", b"test video bytes", "video/mp4")},
+    )
+    assert response.status_code == 202
+    video = response.json()
+    stored_path = tmp_path / video["stored_filename"]
+    assert stored_path.exists()
+
+    deleted = client.delete(f"/api/videos/{video['id']}")
+
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+    assert not stored_path.exists()
+    assert client.get("/api/videos").json() == []
+    assert client.get(f"/api/videos/{video['id']}").status_code == 404
+
+
 def test_start_exam_uses_latest_version_without_revealing_answers(client):
     video_id, question_ids = create_processed_video({
         1: [("Old question", ["old", "answer"], "answer")],

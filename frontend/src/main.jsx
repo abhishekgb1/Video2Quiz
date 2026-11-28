@@ -57,6 +57,7 @@ function App() {
   const [videosLoading, setVideosLoading] = useState(true)
   const [videoError, setVideoError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const [dragging, setDragging] = useState(false)
   const [grading, setGrading] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -267,6 +268,35 @@ function App() {
       setMessage(error.message || 'Could not submit this URL.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function deleteVideo(video) {
+    const name = video.original_filename || video.stored_filename || `Video #${video.id}`
+    if (!window.confirm(`Delete “${name}”? This removes its transcript, quiz history, results, and stored media.`)) return
+    setDeletingId(video.id)
+    setMessage('Deleting video and freeing stored space…')
+    try {
+      const response = await fetch(`${API}/videos/${video.id}`, { method: 'DELETE' })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw Error(result.detail || 'Could not delete this video.')
+      if (selected?.id === video.id) {
+        setSelected(null)
+        setQuiz(null)
+        setTranscript('')
+        setVisualText([])
+        setExamStarted(false)
+        setEvaluation(null)
+        setAttempt(null)
+        setHistory([])
+        setHistoryResult(null)
+      }
+      setMessage('Video deleted. Its saved data and available server files were removed.')
+      await refresh({ silent: true })
+    } catch (error) {
+      setMessage(error.message || 'Could not delete this video.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -520,7 +550,7 @@ function App() {
                 <td><span className="source-label">{video.source_type === 'youtube' ? <Icon name="link" size={14}/> : <Icon name="upload" size={14}/>} {video.source_type}</span></td>
                 <td className="date-cell">{formatDate(video.created_at)}</td>
                 <td><span className={`status-pill ${video.status}`}><i/>{statusLabel(video.status)}</span></td>
-                <td><button className="table-action" onClick={() => openVideo(video)}>{selected?.id === video.id ? 'Selected' : ['completed', 'completed_no_speech'].includes(video.status) ? 'Open quiz' : 'View status'} <Icon name="arrow" size={14}/></button></td>
+                <td><div className="table-row-actions"><button className="table-action" onClick={() => openVideo(video)} disabled={deletingId === video.id}>{selected?.id === video.id ? 'Selected' : ['completed', 'completed_no_speech'].includes(video.status) ? 'Open quiz' : 'View status'} <Icon name="arrow" size={14}/></button><button className="table-action delete-action" onClick={() => deleteVideo(video)} disabled={deletingId === video.id}>{deletingId === video.id ? 'Deleting…' : 'Delete'}</button></div></td>
               </tr>)}</tbody></table></div>}
         </section>
 
