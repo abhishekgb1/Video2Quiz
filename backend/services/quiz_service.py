@@ -25,13 +25,18 @@ def generate_baseline_questions(transcript: dict, count: int = 5):
     for seg in transcript.get("segments") or []:
         sentence = str(seg.get("text", "")).strip()
         if len(sentence.split()) >= 7:
-            candidates.append((sentence, int(float(seg.get("start", 0)))))
+            candidates.append((sentence, int(float(seg.get("start", 0))), "speech"))
+    for item in transcript.get("visual_text") or []:
+        sentence = str(item.get("text", "")).strip()
+        if len(sentence.split()) >= 7:
+            candidates.append((sentence, int(float(item.get("timestamp_seconds", 0))), "visual"))
     if not candidates:
-        candidates = [(s, None) for s in _sentences(transcript.get("text", ""))]
-    words = [w.lower() for w in re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", transcript.get("text", ""))]
+        candidates = [(s, None, "speech") for s in _sentences(transcript.get("text", ""))]
+    all_context = " ".join([transcript.get("text", "")] + [str(item.get("text", "")) for item in transcript.get("visual_text") or []])
+    words = [w.lower() for w in re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", all_context)]
     frequency = Counter(w for w in words if w not in STOPWORDS)
     questions, seen = [], set()
-    for sentence, timestamp in candidates:
+    for sentence, timestamp, source in candidates:
         if len(questions) >= count:
             break
         meaningful = [w for w in re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", sentence) if w.lower() not in STOPWORDS]
@@ -56,9 +61,10 @@ def generate_baseline_questions(transcript: dict, count: int = 5):
         shift = len(questions) % 4
         options = options[shift:] + options[:shift]
         masked = re.sub(rf"\b{re.escape(target)}\b", "_____", sentence, count=1, flags=re.IGNORECASE)
-        questions.append({"question_text": f"Complete the statement from the video: {masked}",
+        source_label = "slide text" if source == "visual" else "transcript"
+        questions.append({"question_text": f"According to the {source_label}, which term completes this statement? {masked}",
                           "options": options, "correct_answer": target,
-                          "explanation": f'The transcript segment states: “{sentence}”',
+                          "explanation": f'The video {source_label} states: “{sentence}”',
                           "difficulty": "easy", "timestamp_seconds": timestamp})
     return questions
 

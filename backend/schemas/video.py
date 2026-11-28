@@ -13,6 +13,7 @@ class VideoOut(BaseModel):
     stored_filename: str
     source_url: str | None
     status: str
+    progress_message: str | None = None
     error_message: str | None
     duration_seconds: int | None
     created_at: datetime
@@ -23,6 +24,7 @@ class TranscriptOut(BaseModel):
     text: str
     language: str | None
     segments: list[dict[str, Any]]
+    visual_text: list[dict[str, Any]] = Field(default_factory=list)
 
 class ExamSubmission(BaseModel):
     answers: dict[int, str]

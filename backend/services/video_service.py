@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from backend.database.database import SessionLocal
 from backend.models.video import Transcript, Video
 from backend.services.quiz_service import persist_questions
-from backend.services.transcription_service import extract_audio, transcribe_audio
+from backend.services.transcription_service import extract_audio, extract_visual_text, transcribe_audio
 logger = logging.getLogger(__name__)
 
 def process_video(video_id: int):
@@ -14,11 +14,17 @@ def process_video(video_id: int):
         if not video:
             return
         video.status, video.error_message = "extracting_audio", None
+        video.progress_message = "Preparing audio for transcription with FFmpeg."
         db.commit()
         audio_path = extract_audio(Path(video.file_path), video_id)
         video.status = "transcribing"
+        video.progress_message = "Whisper is transcribing speech and creating timestamps. Longer videos take longer."
         db.commit()
         data = transcribe_audio(audio_path, video_id)
+        video.status = "extracting_visual_text"
+        video.progress_message = "Sampling video frames and reading slide text."
+        db.commit()
+        visual_text = extract_visual_text(Path(video.file_path), video_id, video.duration_seconds)
         transcript = db.query(Transcript).filter(Transcript.video_id == video_id).first()
         if transcript is None:
             transcript = Transcript(video_id=video_id, text=data["text"])
@@ -26,11 +32,15 @@ def process_video(video_id: int):
         transcript.text = data["text"]
         transcript.language = data.get("language")
         transcript.segments_json = json.dumps(data.get("segments", []), ensure_ascii=False)
+        transcript.visual_text_json = json.dumps(visual_text, ensure_ascii=False)
         db.commit()
         video.status = "generating_quiz"
+        video.progress_message = "Building quiz questions from transcript and slide evidence."
         db.commit()
+        data["visual_text"] = visual_text
         count = persist_questions(db, video_id, data, count=5)
-        video.status = "completed" if data["text"] else "completed_no_speech"
+        video.status = "completed" if data["text"] or count else "completed_no_speech"
+        video.progress_message = "Processing complete." if count or not data["text"] else "Transcript saved; the source did not contain enough distinct terms for quiz questions."
         if not count and data["text"]:
             video.error_message = "Transcription completed, but baseline generator could not make questions."
         db.commit()
@@ -40,6 +50,7 @@ def process_video(video_id: int):
         video = db.query(Video).filter(Video.id == video_id).first()
         if video:
             video.status, video.error_message = "failed", str(exc)[:4000]
+            video.progress_message = "Processing stopped. Review the error details and retry."
             db.commit()
     finally:
         db.close()

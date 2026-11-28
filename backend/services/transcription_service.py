@@ -23,7 +23,7 @@ def transcribe_audio(audio_path: Path, video_id: int) -> dict:
         import whisper
     except ImportError as exc:
         raise RuntimeError("Whisper is not installed. Run pip install -r requirements.txt.") from exc
-    model = whisper.load_model(os.getenv("WHISPER_MODEL", "base"))
+    model = whisper.load_model(os.getenv("WHISPER_MODEL", "tiny"))
     result = model.transcribe(str(audio_path), fp16=False, verbose=False)
     payload = {"video_id": video_id, "language": result.get("language"),
                "text": (result.get("text") or "").strip(),
@@ -32,3 +32,50 @@ def transcribe_audio(audio_path: Path, video_id: int) -> dict:
                              "text": str(s.get("text", "")).strip()} for s in result.get("segments", [])]}
     (TRANSCRIPT_DIR / f"video_{video_id}.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
+
+
+def extract_visual_text(video_path: Path, video_id: int, duration_seconds: int | None = None) -> list[dict]:
+    """Sample a bounded set of frames and OCR readable slide text when available."""
+    if os.getenv("ENABLE_VISUAL_OCR", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+        return []
+    try:
+        import cv2
+        import pytesseract
+    except ImportError:
+        return []
+    executable = os.getenv("TESSERACT_CMD")
+    if executable:
+        pytesseract.pytesseract.tesseract_cmd = executable
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
+        return []
+    try:
+        fps = capture.get(cv2.CAP_PROP_FPS) or 0
+        frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        duration = duration_seconds or (frame_count / fps if fps > 0 else 0)
+        if duration <= 0:
+            return []
+        interval = max(5, int(os.getenv("OCR_SAMPLE_INTERVAL_SECONDS", "30")))
+        max_frames = max(1, min(120, int(os.getenv("OCR_MAX_FRAMES", "120"))))
+        sample_times = list(range(0, int(duration), interval))[:max_frames]
+        results, seen = [], set()
+        for timestamp in sample_times:
+            capture.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000)
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                continue
+            height, width = frame.shape[:2]
+            scale = min(1.0, 1280 / max(width, height))
+            if scale < 1:
+                frame = cv2.resize(frame, (int(width * scale), int(height * scale)))
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+            text = " ".join(pytesseract.image_to_string(gray, config="--psm 6").split())
+            normalized = " ".join(text.casefold().split())
+            if len(text) < 8 or normalized in seen:
+                continue
+            seen.add(normalized)
+            results.append({"timestamp_seconds": timestamp, "text": text[:2000]})
+        return results
+    finally:
+        capture.release()

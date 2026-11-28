@@ -201,7 +201,8 @@ def get_transcript(video_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Video not found.")
         raise HTTPException(status_code=409, detail=f"Transcript not available yet. Current status: {video.status}")
     return {"video_id": video_id, "text": transcript.text, "language": transcript.language,
-            "segments": json.loads(transcript.segments_json or "[]")}
+            "segments": json.loads(transcript.segments_json or "[]"),
+            "visual_text": json.loads(getattr(transcript, "visual_text_json", "[]") or "[]")}
 
 @router.get("/{video_id}/quiz")
 def get_quiz(video_id: int, db: Session = Depends(get_db)):

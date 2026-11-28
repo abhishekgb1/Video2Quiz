@@ -18,3 +18,19 @@ def test_generator_skips_questions_without_real_distractors():
         "segments": [{"start": 0, "text": "Neural neural neural networks networks networks patterns patterns patterns neural."}],
     }
     assert generate_baseline_questions(transcript, 5) == []
+
+
+def test_generator_uses_timestamped_visual_evidence():
+    transcript = {
+        "text": "",
+        "segments": [],
+        "visual_text": [{
+            "timestamp_seconds": 42,
+            "text": "Neural networks learn patterns from data during supervised training.",
+        }],
+    }
+    questions = generate_baseline_questions(transcript, 1)
+    assert len(questions) == 1
+    assert questions[0]["timestamp_seconds"] == 42
+    assert "slide text" in questions[0]["question_text"]
+    assert "slide text states" in questions[0]["explanation"]

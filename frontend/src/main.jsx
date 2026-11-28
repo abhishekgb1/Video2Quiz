@@ -37,12 +37,13 @@ function statusLabel(status = 'unknown') {
 
 function processingStages(status) {
   const states = {
-    uploaded: [2, 0, 0, 0],
-    extracting_audio: [2, 1, 0, 0],
-    transcribing: [2, 2, 1, 0],
-    generating_quiz: [2, 2, 2, 1],
-    completed: [2, 2, 2, 2],
-    completed_no_speech: [2, 2, 2, 3],
+    uploaded: [2, 0, 0, 0, 0],
+    extracting_audio: [2, 1, 0, 0, 0],
+    transcribing: [2, 2, 1, 0, 0],
+    extracting_visual_text: [2, 2, 2, 1, 0],
+    generating_quiz: [2, 2, 2, 2, 1],
+    completed: [2, 2, 2, 2, 2],
+    completed_no_speech: [2, 2, 2, 2, 3],
   }
   if (status === 'downloading') return [1, 0, 0, 0]
   return states[status] || [0, 0, 0, 0]
@@ -69,6 +70,7 @@ function App() {
   const [answers, setAnswers] = useState({})
   const [evaluation, setEvaluation] = useState(null)
   const [transcript, setTranscript] = useState('')
+  const [visualText, setVisualText] = useState([])
   const [attempt, setAttempt] = useState(null)
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -160,7 +162,11 @@ function App() {
         const error = await quizResponse.json().catch(() => ({}))
         setQuizError(error.detail || 'Could not load quiz questions. Try again.')
       }
-      if (transcriptResponse.ok) setTranscript((await transcriptResponse.json()).text || '')
+      if (transcriptResponse.ok) {
+        const transcriptData = await transcriptResponse.json()
+        setTranscript(transcriptData.text || '')
+        setVisualText(Array.isArray(transcriptData.visual_text) ? transcriptData.visual_text : [])
+      }
     } catch {
       setQuizError('Could not connect to the API while loading this video.')
     } finally {
@@ -181,6 +187,7 @@ function App() {
     setEvaluation(null)
     setAttempt(null)
     setTranscript('')
+    setVisualText([])
     setHistory([])
     setHistoryResult(null)
     setHistoryResultError('')
@@ -200,6 +207,12 @@ function App() {
       loadDetails(selected.id)
     }
   }, [selected?.id, selected?.status, quiz, quizLoading])
+
+  useEffect(() => {
+    if (!selected || ['completed', 'completed_no_speech', 'failed'].includes(selected.status)) return undefined
+    const timer = window.setInterval(() => refresh({ silent: true }), 2500)
+    return () => window.clearInterval(timer)
+  }, [selected?.id, selected?.status])
 
   function chooseFile(nextFile) {
     if (!nextFile) return
@@ -391,15 +404,17 @@ function App() {
       ['Video ingestion', 'Upload or source download'],
       ['Audio extraction', 'FFmpeg · mono 16 kHz audio'],
       ['Speech transcription', 'Whisper · transcript and segments'],
-      ['Quiz generation', 'Transcript-derived questions'],
+      ['Visual text extraction', 'OpenCV frame sampling · Tesseract OCR'],
+      ['Quiz generation', 'Speech and visual evidence'],
     ]
+    const stageValues = values.length === 5 ? values : [values[0], values[1], values[2], values[2], values[3]]
     return <div className="pipeline" aria-label={`Processing status: ${statusLabel(video.status)}`}>
       {labels.map(([title, detail], index) => {
-        const value = values[index]
+        const value = stageValues[index]
         const state = value === 3 ? 'unavailable' : value === 2 ? 'complete' : value === 1 ? 'active' : video.status === 'failed' ? 'unknown' : 'pending'
         return <div className={`pipeline-step ${state}`} key={title}>
           <span className="pipeline-node">{state === 'complete' ? <Icon name="check" size={14}/> : index + 1}</span>
-          <span className="pipeline-copy"><strong>{title}</strong><small>{state === 'active' ? statusLabel(video.status) : detail}</small></span>
+          <span className="pipeline-copy"><strong>{title}</strong><small>{state === 'active' ? (video.progress_message || statusLabel(video.status)) : detail}</small></span>
           <span className="pipeline-state">{state === 'complete' ? 'Complete' : state === 'active' ? 'In progress' : state === 'unknown' ? 'Not reported' : state === 'unavailable' ? 'Not generated' : 'Queued'}</span>
         </div>
       })}
@@ -533,7 +548,8 @@ function App() {
               {evaluation ? <div className="result-card"><div className="score-ring"><span>{evaluation.percentage}<small>%</small></span></div><div className="result-copy"><span className="section-kicker">QUIZ COMPLETE · {evaluation.score} / {evaluation.total}</span><h3>{persistentExam ? 'Your result is saved' : 'Your result is ready'}</h3><p>{evaluation.feedback}{!persistentExam && ' This result was not saved to quiz history.'}</p><button className="button button-outline" onClick={retakeExam}>Start another attempt</button></div></div>
                 : <div className="exam-submit-row">{message && <p className="form-message" role="status">{message}</p>}<button className="button button-primary" disabled={grading || (persistentExam && !attempt?.attempt_id)} onClick={submitExam}>{grading ? <><span className="spinner"/> {persistentExam ? 'Saving result…' : 'Grading…'}</> : submissionRetryLocked ? 'Retry submission' : 'Submit exam'}</button></div>}
             </>}
-            {transcript && <details className="transcript-details"><summary><span><Icon name="history" size={17}/> Review source transcript</span><span className="summary-plus">+</span></summary><p>{transcript}</p></details>}
+              {transcript && <details className="transcript-details"><summary><span><Icon name="history" size={17}/> Review source transcript</span><span className="summary-plus">+</span></summary><p>{transcript}</p></details>}
+              {visualText.length > 0 && <details className="transcript-details"><summary><span><Icon name="spark" size={17}/> Review timestamped slide text · {visualText.length} frames</span><span className="summary-plus">+</span></summary><div className="visual-evidence">{visualText.map((item, index) => <p key={`${item.timestamp_seconds}-${index}`}><strong>{Math.floor(item.timestamp_seconds / 60)}:{String(item.timestamp_seconds % 60).padStart(2, '0')}</strong> {item.text}</p>)}</div></details>}
             {quiz?.notice && <p className="quiz-notice">{quiz.notice}</p>}
           </section>
 

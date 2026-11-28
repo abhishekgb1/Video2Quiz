@@ -12,6 +12,7 @@ class Video(Base):
     file_path = Column(String(1000), nullable=False)
     source_url = Column(String(2000), nullable=True)
     status = Column(String(40), nullable=False, default="uploaded", index=True)
+    progress_message = Column(String(255), nullable=True)
     error_message = Column(Text, nullable=True)
     duration_seconds = Column(Integer, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -27,6 +28,7 @@ class Transcript(Base):
     text = Column(Text, nullable=False)
     language = Column(String(30), nullable=True)
     segments_json = Column(Text, nullable=False, default="[]")
+    visual_text_json = Column(Text, nullable=False, default="[]")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     video = relationship("Video", back_populates="transcript")
 
