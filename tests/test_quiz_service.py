@@ -22,8 +22,8 @@ def test_generator_skips_questions_without_real_distractors():
 
 def test_generator_uses_timestamped_visual_evidence():
     transcript = {
-        "text": "",
-        "segments": [],
+        "text": "Neural networks learn patterns from data during supervised training. Optimization improves model performance over repeated batches.",
+        "segments": [{"start": 100, "text": "Optimization improves model performance over repeated batches."}],
         "visual_text": [{
             "timestamp_seconds": 42,
             "text": "Neural networks learn patterns from data during supervised training.",

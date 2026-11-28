@@ -1,8 +1,15 @@
 import json, os, subprocess
+from functools import lru_cache
 from pathlib import Path
 from dotenv import load_dotenv
 from backend.utils.storage import AUDIO_DIR, TRANSCRIPT_DIR
 load_dotenv()
+
+
+@lru_cache(maxsize=2)
+def _load_whisper_model(model_name: str):
+    import whisper
+    return whisper.load_model(model_name)
 
 def extract_audio(video_path: Path, video_id: int) -> Path:
     output_path = AUDIO_DIR / f"video_{video_id}.wav"
@@ -20,10 +27,9 @@ def extract_audio(video_path: Path, video_id: int) -> Path:
 
 def transcribe_audio(audio_path: Path, video_id: int) -> dict:
     try:
-        import whisper
+        model = _load_whisper_model(os.getenv("WHISPER_MODEL", "tiny"))
     except ImportError as exc:
         raise RuntimeError("Whisper is not installed. Run pip install -r requirements.txt.") from exc
-    model = whisper.load_model(os.getenv("WHISPER_MODEL", "tiny"))
     result = model.transcribe(str(audio_path), fp16=False, verbose=False)
     payload = {"video_id": video_id, "language": result.get("language"),
                "text": (result.get("text") or "").strip(),

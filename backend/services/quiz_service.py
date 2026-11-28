@@ -32,6 +32,7 @@ def generate_baseline_questions(transcript: dict, count: int = 5):
             candidates.append((sentence, int(float(item.get("timestamp_seconds", 0))), "visual"))
     if not candidates:
         candidates = [(s, None, "speech") for s in _sentences(transcript.get("text", ""))]
+    candidates.sort(key=lambda item: (item[1] is None, item[1] if item[1] is not None else 0))
     all_context = " ".join([transcript.get("text", "")] + [str(item.get("text", "")) for item in transcript.get("visual_text") or []])
     words = [w.lower() for w in re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", all_context)]
     frequency = Counter(w for w in words if w not in STOPWORDS)
